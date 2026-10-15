@@ -22,7 +22,10 @@ Ingram Micro Canada, TD Synnex Canada and D&H Canada. He knows the distributor s
 3. Conversational storefront on **Typebot**, calling a narrow read-only search service; Stripe payment.
 4. **No automatic ordering** (ADR 0003). After payment, the system emails Chris's team an Order Notification with
    the parts list, and a person places the PO manually. Orders above a Bid Threshold are flagged so the team can
-   request a special bid first.
+   request a special bid first. Bid Threshold = total cost of new hardware **per manufacturer** in an order. The bid is
+   requested **after** the customer pays the regular price (v1).
+   Order email per line: manufacturer, MPN, qty, Ingram SKU, live cost + Canadian stock at payment time, plus a
+   "BID THRESHOLD REACHED" banner when it applies.
 
 Principles (already decided; don't relitigate):
 - **Two speeds of data**: bulk catalog on a schedule into our DB; live price & availability only for the
@@ -62,6 +65,7 @@ Decisions from Chris (domain terms are defined in `CONTEXT.md`; decision records
   add-ons are excluded but counted in the data-quality report.
 - Internal search page: Chris's team only. Microsoft sign-in (Entra ID) gets set up by his Global Admin once the
   prototype has been demoed, probably restricted to a group (TBD). Until then Chris is the only user.
+- Prototype runs on Chris's own PC for now (not a cloud server).
 - "Manufacturer" is the word used everywhere, including customer-facing text.
 
 **Out of scope**: placing orders (never call order endpoints, even sandbox, unless Chris asks); anything

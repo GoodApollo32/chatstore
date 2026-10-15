@@ -106,5 +106,5 @@ An email to the MSP team listing the parts a customer has paid for, so a person 
 _Avoid_: auto-order, order placement
 
 **Bid Threshold**:
-A rule that marks an order as large enough to request Special Pricing from the Distributor before the purchase order is placed.
+A dollar amount that, once the total Cost of new hardware from one Manufacturer in an order reaches it, marks the order for a Special Pricing request before the purchase order is placed. The request happens after the customer has paid the regular price.
 _Avoid_: bid trigger, discount threshold
