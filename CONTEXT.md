@@ -87,6 +87,10 @@ _Avoid_: real-time sync
 The record of one execution of a Catalog Sync or Price & Stock Refresh, with its counts and errors.
 _Avoid_: job, batch
 
+**Stale Price**:
+A Cost or stock figure that hasn't been refreshed for more than 48 hours. It is still shown, with a "may be out of date" flag.
+_Avoid_: expired price, old data
+
 **Scope**:
 The editable list of Manufacturers and categories that the Catalog Sync pulls.
 _Avoid_: filter, whitelist
@@ -94,3 +98,13 @@ _Avoid_: filter, whitelist
 **Match Review**:
 An Offer that could not be linked to a Master Product with confidence. It waits for a person to decide.
 _Avoid_: unmatched queue, exceptions
+
+### Orders (later phases)
+
+**Order Notification**:
+An email to the MSP team listing the parts a customer has paid for, so a person can place the purchase order with the Distributor. The system never places orders itself.
+_Avoid_: auto-order, order placement
+
+**Bid Threshold**:
+A rule that marks an order as large enough to request Special Pricing from the Distributor before the purchase order is placed.
+_Avoid_: bid trigger, discount threshold

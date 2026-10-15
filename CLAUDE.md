@@ -20,7 +20,9 @@ Ingram Micro Canada, TD Synnex Canada and D&H Canada. He knows the distributor s
 1. Combined product catalog from all three distributors, refreshed on a schedule.
 2. Live price/stock checks at quote time.
 3. Conversational storefront on **Typebot**, calling a narrow read-only search service; Stripe payment.
-4. Order placement to the best-source distributor after payment, with human approval at first.
+4. **No automatic ordering** (ADR 0003). After payment, the system emails Chris's team an Order Notification with
+   the parts list, and a person places the PO manually. Orders above a Bid Threshold are flagged so the team can
+   request a special bid first.
 
 Principles (already decided; don't relitigate):
 - **Two speeds of data**: bulk catalog on a schedule into our DB; live price & availability only for the
@@ -51,8 +53,15 @@ Decisions from Chris (domain terms are defined in `CONTEXT.md`; decision records
 - In Stock = Canadian warehouses only. Per-warehouse delivery estimates come later.
 - Our own category list, translated from Ingram's. Discontinued/restricted products are kept but hidden by default.
 - EHF is stored separately from Cost.
-- Prices refresh twice a day (not hourly).
-- Internal search page: Chris's team only, Microsoft sign-in (Entra ID).
+- Price & stock refresh twice a day (~6 am and 1 pm Pacific); full catalog pull ~2 am. Prices older than 48 h are
+  flagged "may be out of date" but still shown.
+- Special bids/promotions are never applied automatically. They are shown on the internal page only. Quantity breaks
+  are shown under cost.
+- Categories: 2-in-1s/Chromebooks/mobile workstations → Laptops; all-in-ones/mini PCs/thin clients/desktop
+  workstations → Desktops; portable monitors → Monitors; tablets excluded. Parts, bags and warranty/service
+  add-ons are excluded but counted in the data-quality report.
+- Internal search page: Chris's team only. Microsoft sign-in (Entra ID) gets set up by his Global Admin once the
+  prototype has been demoed, probably restricted to a group (TBD). Until then Chris is the only user.
 - "Manufacturer" is the word used everywhere, including customer-facing text.
 
 **Out of scope**: placing orders (never call order endpoints, even sandbox, unless Chris asks); anything
