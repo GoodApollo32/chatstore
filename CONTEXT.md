@@ -23,6 +23,14 @@ _Avoid_: vendor, brand, OEM
 The part number the Manufacturer assigns. The raw value is kept exactly as received. A normalized form (uppercase, no spaces, dashes or dots) is what gets compared.
 _Avoid_: vendor part number, VPN, model number
 
+**Regional Variant**:
+A Master Product whose MPN differs from another only by a region code (e.g. HP `#ABC` Canada vs `#ABA` US). Each Regional Variant is its own Master Product and is never merged with the others.
+_Avoid_: localization, SKU variant
+
+**Category**:
+One of our own product groupings (Laptops, Desktops, Monitors, Docking Stations). Each Distributor's categories are translated into it.
+_Avoid_: distributor category, product class
+
 **Distributor SKU**:
 The distributor's own identifier for an Offer (at Ingram, the "Ingram part number").
 _Avoid_: part number (ambiguous), item number
@@ -34,8 +42,20 @@ _Avoid_: supplier, vendor
 ### Prices and stock
 
 **Cost**:
-What the distributor charges us for one unit, before any markup.
+The Distributor's regular account price to us for one unit, before markup, EHF and any Special Pricing.
 _Avoid_: price (ambiguous), dealer price, customer price
+
+**Quantity Break**:
+A lower Cost that a Distributor gives automatically when the quantity ordered reaches a threshold. It applies whenever the quote quantity qualifies.
+_Avoid_: volume discount, tier price
+
+**Special Pricing**:
+A conditional discount such as a special bid or promotion, tied to an end customer, a quantity cap or an expiry date. It is recorded for reference and never applied automatically.
+_Avoid_: discount (ambiguous), deal price
+
+**EHF** (Environmental Handling Fee):
+A provincial recycling fee on electronics, charged per unit. It is kept as a separate amount alongside Cost and never folded into it.
+_Avoid_: eco fee, recycling fee, service fee
 
 **MSRP**:
 The manufacturer's suggested retail price as reported by the distributor.
@@ -44,6 +64,10 @@ _Avoid_: retail price, list price
 **Warehouse Stock**:
 The quantity of an Offer available at one distributor warehouse at the moment it was last refreshed.
 _Avoid_: inventory, availability
+
+**In Stock**:
+Units available right now at a Canadian Distributor warehouse. US warehouse stock, on-order and back-ordered quantities never count.
+_Avoid_: available, in inventory
 
 ### Operations
 

@@ -42,7 +42,18 @@ at 50, rate limits/retries, run logging); DB (master products, offers, warehouse
 queue); nightly + hourly jobs, also runnable on demand; internal search page (keyword, vendor, category,
 in-stock, price range; shows cost, MSRP, stock by warehouse, last updated); data-quality report.
 
-Vendor/category scope lives in editable config. Chris must confirm his version-one list.
+Scope lives in editable config. Chris's confirmed version-one list: **Laptops, Desktops, Monitors,
+Docking Stations** from **Lenovo, Dell, HP**.
+
+Decisions from Chris (domain terms are defined in `CONTEXT.md`; decision records are in `docs/adr/`):
+- Regional variants (HP `#ABC` vs `#ABA`) are separate products (ADR 0001).
+- Cost = regular account price. Quantity breaks apply when the quantity qualifies.
+- In Stock = Canadian warehouses only. Per-warehouse delivery estimates come later.
+- Our own category list, translated from Ingram's. Discontinued/restricted products are kept but hidden by default.
+- EHF is stored separately from Cost.
+- Prices refresh twice a day (not hourly).
+- Internal search page: Chris's team only, Microsoft sign-in (Entra ID).
+- "Manufacturer" is the word used everywhere, including customer-facing text.
 
 **Out of scope**: placing orders (never call order endpoints, even sandbox, unless Chris asks); anything
 customer-facing (Typebot, storefront, payments); TD Synnex/D&H connectors (design for them, don't build);
@@ -54,7 +65,7 @@ Ingram `serviceFees`).
 
 ## Technical rules
 
-- Stack: proposed TypeScript (Node) + PostgreSQL. Chris has to OK it before code is written.
+- Stack: TypeScript (Node) + PostgreSQL. Approved by Chris (see `docs/adr/0002`).
   Local first (Docker Compose for the DB); later a small cheap cloud server + managed DB.
 - **Secrets**: env vars only (`INGRAM_CLIENT_ID`, `INGRAM_CLIENT_SECRET`, `INGRAM_CUSTOMER_NUMBER`,
   `INGRAM_COUNTRY_CODE=CA`, `INGRAM_ENV=sandbox|production`, `DATABASE_URL`). Never commit them.
