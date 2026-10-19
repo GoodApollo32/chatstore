@@ -180,6 +180,18 @@ describe.skipIf(!url)('jobs against a real database', () => {
     expect((await offer('A1')).listed).toBe(true);
   });
 
+  it('carries on when a manufacturer search finds nothing, without hiding existing products', async () => {
+    await run('catalog');
+    fake.pages.Dell = [[]];
+    const result = await run('catalog');
+    expect(result.status).toBe('partial');
+    const notes = (await db.query(`SELECT notes FROM sync_run WHERE id = $1`, [result.runId])).rows[0].notes.join(' ');
+    expect(notes).toMatch(/no products when searching for the manufacturer "Dell"/);
+    expect(notes).toMatch(/may have dropped were not checked/);
+    expect((await offer('D1')).listed).toBe(true);
+    expect((await offer('H1')).listed).toBe(true);
+  });
+
   it('only lets one update run at a time', async () => {
     await withJobLock(db, async () => {
       await expect(run('refresh')).rejects.toThrow(JobAlreadyRunningError);

@@ -20,8 +20,25 @@ export class IngramConnector implements DistributorConnector {
   }
 
   async searchPage(vendor: string, pageNumber: number, pageSize = SEARCH_PAGE_SIZE): Promise<{ page: CatalogPage; raw: unknown }> {
-    const { body } = await this.client.get<any>('/resellers/v6/catalog', { vendor, pageNumber, pageSize });
-    return { page: parseSearchPage(body, pageNumber, pageSize), raw: body };
+    return this.search({ vendor }, pageNumber, pageSize);
+  }
+
+  /** Free-text search (title, part numbers, manufacturer name). Used to find how Ingram spells a manufacturer. */
+  async keywordSearchPage(keyword: string, pageNumber: number, pageSize = SEARCH_PAGE_SIZE): Promise<{ page: CatalogPage; raw: unknown }> {
+    return this.search({ keyword }, pageNumber, pageSize);
+  }
+
+  private async search(filter: { vendor?: string; keyword?: string }, pageNumber: number, pageSize: number): Promise<{ page: CatalogPage; raw: unknown }> {
+    try {
+      const { body } = await this.client.get<any>('/resellers/v6/catalog', { ...filter, pageNumber, pageSize });
+      return { page: parseSearchPage(body, pageNumber, pageSize), raw: body };
+    } catch (err) {
+      // Ingram answers a search with no results (or a page past the end) with 404 "Record not found".
+      if (err instanceof IngramApiError && err.status === 404) {
+        return { page: { pageNumber, totalRecords: pageNumber === 1 ? 0 : null, listings: [], isLastPage: true }, raw: err.body };
+      }
+      throw err;
+    }
   }
 
   async *catalogPages(vendor: string, startPage: number): AsyncIterable<CatalogPage> {

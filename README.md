@@ -110,6 +110,8 @@ The PC must be on with Docker Desktop running for scheduled updates to happen.
 | "The settings file .env is missing" | Double-click **Edit Settings**, fill it in, save. |
 | ✘ Could not sign in | The client ID/secret is wrong, or `INGRAM_ENV` doesn't match the app the keys belong to. |
 | ✘ Catalog search failed … 401/403 | The app isn't approved for the Product Catalog API, or the customer number is wrong. |
+| ✘ Catalog search found no … products | Ingram spells that manufacturer differently. The check lists the names Ingram uses. Put the right one in `ingramSearch` for that manufacturer in `config\scope.json`, save, and run the check again. |
+| An update shows **partial** and says Ingram found no products for a manufacturer | Same fix as the line above. The other manufacturers were still pulled, and nothing already in the catalog was hidden. |
 | An update shows **failed** on the Updates page | The message says why. Every call to Ingram is logged with a reference number Ingram support can trace. |
 | Page doesn't open | Make sure the catalog is started, then go to http://localhost:8080. |
 

@@ -34,18 +34,26 @@ export async function smokeTest(scope: Scope, recordingsDir = 'recordings'): Pro
     return false;
   }
 
-  const manufacturer = scope.manufacturers[0]!;
   let skus: string[] = [];
-  try {
-    const { page, raw } = await connector.searchPage(manufacturer.ingramSearch, 1, 10);
-    save('search', raw);
-    say(`✔ Catalog search works: ${page.totalRecords ?? '?'} ${manufacturer.name} products listed; first page:`);
-    for (const l of page.listings) say(`    ${l.distributorSku.padEnd(10)} ${(l.mpnRaw ?? '-').padEnd(18)} ${l.manufacturerRaw.padEnd(10)} ${[l.distributorCategory, l.distributorSubcategory].filter(Boolean).join(' › ')} | ${l.title.slice(0, 60)}`);
-    skus = page.listings.map((l) => l.distributorSku);
-  } catch (err) {
-    ok = false;
-    say(`✘ Catalog search failed: ${(err as Error).message}`);
+  for (const manufacturer of scope.manufacturers) {
+    try {
+      const { page, raw } = await connector.searchPage(manufacturer.ingramSearch, 1, 10);
+      save(`search-${manufacturer.name}`, raw);
+      if (page.listings.length === 0) {
+        ok = false;
+        say(`✘ Catalog search found no ${manufacturer.name} products when asking Ingram for the manufacturer "${manufacturer.ingramSearch}".`);
+        await suggestSpelling(connector, manufacturer.ingramSearch, say);
+        continue;
+      }
+      say(`✔ Catalog search works: ${page.totalRecords ?? '?'} ${manufacturer.name} products listed; first page:`);
+      for (const l of page.listings) say(`    ${l.distributorSku.padEnd(10)} ${(l.mpnRaw ?? '-').padEnd(18)} ${l.manufacturerRaw.padEnd(10)} ${[l.distributorCategory, l.distributorSubcategory].filter(Boolean).join(' › ')} | ${l.title.slice(0, 60)}`);
+      if (!skus.length) skus = page.listings.map((l) => l.distributorSku);
+    } catch (err) {
+      ok = false;
+      say(`✘ Catalog search for ${manufacturer.name} failed: ${(err as Error).message}`);
+    }
   }
+  say();
 
   if (skus.length) {
     try {
@@ -89,6 +97,23 @@ export async function smokeTest(scope: Scope, recordingsDir = 'recordings'): Pro
   printCalls(calls);
   say(`Raw responses saved in ${recordingsDir}/`);
   return ok;
+}
+
+/** A free-text search shows which manufacturer names Ingram actually uses for this search term. */
+async function suggestSpelling(connector: IngramConnector, term: string, say: (s?: string) => void): Promise<void> {
+  try {
+    const { page } = await connector.keywordSearchPage(term, 1, 100);
+    const names = new Map<string, number>();
+    for (const l of page.listings) if (l.manufacturerRaw) names.set(l.manufacturerRaw, (names.get(l.manufacturerRaw) ?? 0) + 1);
+    if (!names.size) {
+      say(`    A general search for "${term}" found nothing either.`);
+      return;
+    }
+    say(`    A general search for "${term}" found products from these manufacturer names (how Ingram spells them):`);
+    for (const [name, n] of [...names].sort((a, b) => b[1] - a[1])) say(`      "${name}"  (${n} of the first ${page.listings.length} results)`);
+  } catch (err) {
+    say(`    A general search for "${term}" also failed: ${(err as Error).message}`);
+  }
 }
 
 function printCalls(calls: ApiCallRecord[]): void {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IngramConfig } from '../src/config.js';
 import { assertAllowed, EndpointNotAllowedError, IngramApiError, IngramClient, type ApiCallRecord } from '../src/ingram/client.js';
+import { IngramConnector } from '../src/ingram/connector.js';
 
 const config: IngramConfig = {
   clientId: 'id', clientSecret: 'secret', customerNumber: '20-123456', countryCode: 'CA', env: 'sandbox', senderId: undefined,
@@ -136,5 +137,49 @@ describe('requests', () => {
     });
     await c.get('/resellers/v6/catalog');
     expect(tokens).toBe(2);
+  });
+});
+
+describe('catalog search', () => {
+  const notFound = () => json(404, [{ traceid: 'abc', type: 'Errors', message: 'Record not found', fields: [] }]);
+  const connector = (handler: Handler) => {
+    const f = fakeFetch(handler);
+    return { conn: new IngramConnector(config, {}, { fetch: f.fn, sleep: async () => {} }), requests: f.requests };
+  };
+
+  it('treats Ingram\'s 404 "Record not found" as a search with no results', async () => {
+    const { conn, requests } = connector((url) => (url.pathname.includes('oauth') ? token() : notFound()));
+    const { page } = await conn.searchPage('Dell', 1);
+    expect(page).toMatchObject({ pageNumber: 1, totalRecords: 0, listings: [], isLastPage: true });
+    expect(requests.filter((r) => !r.url.pathname.includes('oauth'))).toHaveLength(1);
+  });
+
+  it('stops paging when a later page comes back 404', async () => {
+    const item = (n: number) => ({ ingramPartNumber: `SKU${n}`, vendorName: 'DELL', vendorPartNumber: `M${n}`, description: 'LAPTOP' });
+    const { conn } = connector((url) => {
+      if (url.pathname.includes('oauth')) return token();
+      if (url.searchParams.get('pageNumber') === '1') {
+        return json(200, { recordsFound: 200, pageNumber: 1, catalog: Array.from({ length: 100 }, (_, i) => item(i)), nextPage: '/resellers/v6/catalog?pageNumber=2' });
+      }
+      return notFound();
+    });
+    const pages = [];
+    for await (const p of conn.catalogPages('Dell', 1)) pages.push(p);
+    expect(pages.map((p) => p.listings.length)).toEqual([100, 0]);
+  });
+
+  it('searches by manufacturer, or by keyword to find Ingram\'s spelling', async () => {
+    const { conn, requests } = connector((url) => (url.pathname.includes('oauth') ? token() : json(200, { catalog: [] })));
+    await conn.searchPage('Dell', 1, 10);
+    await conn.keywordSearchPage('Dell', 1, 100);
+    const api = requests.filter((r) => !r.url.pathname.includes('oauth')).map((r) => r.url.searchParams);
+    expect(api[0]!.get('vendor')).toBe('Dell');
+    expect(api[1]!.get('keyword')).toBe('Dell');
+    expect(api[1]!.get('vendor')).toBeNull();
+  });
+
+  it('still fails on other errors', async () => {
+    const { conn } = connector((url) => (url.pathname.includes('oauth') ? token() : json(403, { message: 'Forbidden' })));
+    await expect(conn.searchPage('Dell', 1)).rejects.toThrow('403');
   });
 });

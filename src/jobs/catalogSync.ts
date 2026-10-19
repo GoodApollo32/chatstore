@@ -66,10 +66,13 @@ export async function runCatalogSync(deps: {
 
     try {
       // 1. Walk the catalog for each manufacturer.
+      const notFound: string[] = [];
       for (let m = state.manufacturerIndex; m < scope.manufacturers.length; m++) {
         const manufacturer = scope.manufacturers[m]!;
         const startPage = m === state.manufacturerIndex ? state.nextPage : 1;
+        let found = 0;
         for await (const page of connector.catalogPages(manufacturer.ingramSearch, startPage)) {
+          found += page.listings.length;
           for (const listing of page.listings) {
             counts.fetched++;
             await processListing(db, scope, runId, listing, counts);
@@ -77,17 +80,30 @@ export async function runCatalogSync(deps: {
           Object.assign(state, { manufacturerIndex: m, nextPage: page.pageNumber + 1 });
           await saveProgress(db, runId, counts, state);
         }
+        if (startPage === 1 && found === 0) {
+          notFound.push(manufacturer.name);
+          notes.push(
+            `Ingram found no products when searching for the manufacturer "${manufacturer.ingramSearch}". ` +
+            `The name probably doesn't match how Ingram spells it; the connection check shows Ingram's spelling.`,
+          );
+        }
         Object.assign(state, { manufacturerIndex: m + 1, nextPage: 1 });
         await saveProgress(db, runId, counts, state);
       }
 
       // 2. Products the distributor no longer returns stay in the database but drop out of search.
-      const gone = await db.query(
-        `UPDATE distributor_offer SET listed = false, updated_at = now()
-         WHERE distributor = $1 AND listed AND (catalog_synced_at IS NULL OR catalog_synced_at < $2)`,
-        [connector.id, state.passStartedAt],
-      );
-      counts.noLongerListed = gone.rowCount ?? 0;
+      // Skipped when a manufacturer search came back empty: that's more likely a search problem than
+      // the manufacturer's whole range disappearing, and hiding it all would empty the search page.
+      if (notFound.length) {
+        notes.push(`Products Ingram may have dropped were not checked this time, because ${notFound.join(', ')} returned nothing.`);
+      } else {
+        const gone = await db.query(
+          `UPDATE distributor_offer SET listed = false, updated_at = now()
+           WHERE distributor = $1 AND listed AND (catalog_synced_at IS NULL OR catalog_synced_at < $2)`,
+          [connector.id, state.passStartedAt],
+        );
+        counts.noLongerListed = gone.rowCount ?? 0;
+      }
 
       // 3. Price new products straight away so they don't wait for the next refresh.
       const unpriced = await db.query<{ id: number; sku: string }>(
@@ -104,7 +120,7 @@ export async function runCatalogSync(deps: {
         await fetchDetails(db, connector, counts, notes);
       }
 
-      const status = priced.aborted ? 'partial' : counts.priceFailed > 0 ? 'partial' : 'succeeded';
+      const status = priced.aborted || counts.priceFailed > 0 || notFound.length ? 'partial' : 'succeeded';
       await finishRun(db, runId, status, counts, notes, priced.batchErrors.length ? summarizeErrors(priced.batchErrors) : null);
       return { runId, status, summary: describe(counts) };
     } catch (err) {
