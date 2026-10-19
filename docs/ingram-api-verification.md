@@ -49,7 +49,9 @@ must still be confirmed in the sandbox (open questions Q1–Q6 in `docs/handoff-
     transaction"), `X-RateLimit-Remaining` and `X-RateLimit-Reset` (Unix time); limits are per API app; over the
     limit → 429. The client sends at most 50/minute, records these headers on every call, and when Remaining hits 0
     or a 429 arrives it waits until Reset (up to an hour; beyond that the run stops and says when to retry).
-    Still open: what period the 500 covers.
+    Observed by Chris in production use (2026-10-19): `X-RateLimit-Limit: 60` with a reset about every minute,
+    i.e. 60 per minute. Still saw occasional 429s at our 50/min, so the client now also waits 1.5 s past the
+    reset (it's in whole seconds) and spreads the remaining allowance over the time left in the window.
 
 ## Endpoints that must be unreachable in Phase 1 (safety rail)
 

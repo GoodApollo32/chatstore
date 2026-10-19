@@ -232,7 +232,7 @@ describe('Ingram rate limits', () => {
     expect((await c.get('/resellers/v6/catalog')).body).toEqual({ ok: true });
     const waited = Math.max(...sleeps);
     expect(waited).toBeGreaterThan(35_000);
-    expect(waited).toBeLessThanOrEqual(41_000);
+    expect(waited).toBeLessThanOrEqual(42_500);
     expect(calls.filter((r) => r.path.includes('catalog')).map((r) => r.rateLimit?.remaining)).toEqual([0, 59]);
   });
 
@@ -244,6 +244,17 @@ describe('Ingram rate limits', () => {
     expect(Math.max(0, ...sleeps)).toBeLessThan(1000);
     await c.get('/resellers/v6/catalog');
     expect(Math.max(...sleeps)).toBeGreaterThan(15_000);
+  });
+
+  it('spreads the remaining allowance over the time left until the reset', async () => {
+    const { c, sleeps } = client((url) =>
+      url.pathname.includes('oauth') ? token()
+        : json(200, {}, { 'X-RateLimit-Remaining': '2', 'X-RateLimit-Reset': String(nowSec() + 20) }));
+    await c.get('/resellers/v6/catalog');
+    await c.get('/resellers/v6/catalog');
+    const gap = Math.max(...sleeps);
+    expect(gap).toBeGreaterThan(8_000); // about 21.5 s / 2 requests left
+    expect(gap).toBeLessThan(11_500);
   });
 
   it('stops with a plain message when the allowance resets more than an hour away', async () => {

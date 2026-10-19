@@ -77,6 +77,9 @@ const RETRYABLE = new Set([429, 500, 502, 503, 504]);
  */
 export const MAX_RATE_LIMIT_WAIT_MS = 60 * 60_000;
 
+/** Ingram's reset time is in whole seconds and its clock isn't ours; wait this much past it. */
+const RESET_MARGIN_MS = 1500;
+
 export class IngramClient {
   private readonly fetchFn: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -154,10 +157,7 @@ export class IngramClient {
         correlationId, method, path, status: res.status, durationMs: Date.now() - started, attempt,
         error: ok ? null : summarizeError(parsed), rateLimit,
       });
-      // Allowance used up: hold the next request until Ingram's counter resets.
-      if (rateLimit?.resetAt && (res.status === 429 || rateLimit.remaining === 0)) {
-        this.pausedUntil = Math.max(this.pausedUntil, rateLimit.resetAt.getTime());
-      }
+      this.noteAllowance(rateLimit, res.status);
       if (ok) return { status: res.status, body: parsed as T };
 
       if (res.status === 401 && !refreshedAfter401) {
@@ -185,6 +185,22 @@ export class IngramClient {
   private networkErrorMessage(err: unknown): string {
     if (err instanceof Error && err.name === 'TimeoutError') return `no reply from Ingram within ${Math.round(this.timeoutMs / 1000)} seconds`;
     return err instanceof Error ? err.message : String(err);
+  }
+
+  /**
+   * Acts on what Ingram says is left. Used up (or a 429): hold everything until the reset. Otherwise
+   * spread the remaining requests over the time to the reset, so we never run out mid-window even
+   * when something else (another program using the same Ingram app) is using the same allowance.
+   */
+  private noteAllowance(rl: RateLimitInfo | null, status: number): void {
+    if (!rl?.resetAt) return;
+    const now = Date.now();
+    const reset = rl.resetAt.getTime() + RESET_MARGIN_MS;
+    if (status === 429 || rl.remaining === 0) {
+      this.pausedUntil = Math.max(this.pausedUntil, reset);
+    } else if (rl.remaining !== null && reset > now) {
+      this.nextSlot = Math.max(this.nextSlot, now + (reset - now) / rl.remaining);
+    }
   }
 
   /**
@@ -264,9 +280,7 @@ export class IngramClient {
       const parsed: any = await readBody(res);
       const ok = res.ok && typeof parsed?.access_token === 'string';
       const rateLimit = readRateLimit(res);
-      if (rateLimit?.resetAt && (res.status === 429 || rateLimit.remaining === 0)) {
-        this.pausedUntil = Math.max(this.pausedUntil, rateLimit.resetAt.getTime());
-      }
+      this.noteAllowance(rateLimit, res.status);
       this.log({ rateLimit,
         correlationId, method, path, status: res.status, durationMs: Date.now() - started, attempt,
         error: ok ? null : summarizeError(parsed),
