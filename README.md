@@ -1,0 +1,130 @@
+# Product Catalog — Phase 1 (Ingram Micro Canada)
+
+This program builds our own product catalog from Ingram Micro Canada's data and shows it on an internal
+search page. For each product you see our cost, MSRP, EHF, stock in each warehouse, and when it was last checked.
+It also produces a **data-quality report**, which shows how complete Ingram's data is and what was left out.
+
+- **Version-one scope:** laptops, desktops, monitors and docking stations from Lenovo, HP and Dell.
+  You can edit this list (see "Changing what gets pulled").
+- **It never places orders.** It is physically unable to call Ingram's ordering functions.
+- **It runs on this PC only.** Nobody else on the network can open the page, and your Ingram keys stay in a file on this PC.
+
+---
+
+## One-time setup (about 20 minutes)
+
+### 1. Install Docker Desktop
+1. Go to **https://www.docker.com/products/docker-desktop/** and click **Download for Windows**.
+2. Run the installer and keep the default options. Restart the PC if it asks.
+3. Open **Docker Desktop** from the Start menu. Accept the terms. You can skip signing in.
+4. Wait until the bottom-left corner says **Engine running** (green).
+
+Docker Desktop is the only program you need to install. It runs the catalog and its database.
+
+### 2. Download the catalog program
+1. On GitHub, open the project and click the green **Code** button, then **Download ZIP**.
+2. Right-click the downloaded ZIP, choose **Extract All…**, and extract it to a folder you'll keep,
+   e.g. `Documents\Catalog`.
+
+### 3. Enter your Ingram keys
+1. In that folder, double-click **Edit Settings**. Notepad opens with the settings file.
+2. Fill in the lines after the `=` sign (no spaces, no quotes):
+   - `INGRAM_CLIENT_ID` and `INGRAM_CLIENT_SECRET`: from the Ingram developer portal → **My Apps** → your app.
+   - `INGRAM_CUSTOMER_NUMBER`: your Ingram Micro Canada reseller account number.
+   - `INGRAM_ENV`: `sandbox` if those are keys for your **sandbox (test) app**, `production` if they are for your
+     approved **production app**. Sandbox keys only work with `sandbox`, and production keys only with `production`.
+3. Save (**Ctrl+S**) and close Notepad.
+
+Never email these keys or paste them into a chat. They only need to be in this file.
+
+### 4. Check the connection
+Double-click **Check Ingram Connection**. The first time takes a few minutes. Then it shows:
+- ✔ Signed in to Ingram
+- ✔ Catalog search works, followed by a few sample products
+- ✔ Price & availability works, followed by cost, MSRP, EHF and Canadian stock for those products, and the warehouses seen
+- Whether Ingram's "product details" (specifications) are available for Canada
+
+A ✘ line means something needs fixing. See "If something goes wrong" below.
+
+---
+
+## Everyday use
+
+### Start
+Double-click **Start Catalog**. The search page opens in your browser at **http://localhost:8080**
+(bookmark it). If the page shows an error, wait 30 seconds and refresh. The program is probably still starting.
+
+The very first time, the catalog is empty. Go to **Updates** and click **Run full catalog pull now**.
+It can take a while (Ingram returns 100 products per request). The Updates page shows progress.
+
+### Keep prices current
+On the **Updates** page:
+- **Refresh prices & stock now** updates cost and stock for every product. It takes a few minutes.
+- **Run full catalog pull now** also finds new products and notices ones Ingram has dropped. It takes longer.
+  It continues where it left off if it was interrupted.
+
+Prices older than 48 hours are still shown but marked **may be out of date**.
+
+### Search
+Filter by keyword, part number, Ingram SKU, manufacturer, category, cost range, and "in stock in Canada".
+Click a part number to see the full detail: stock in each warehouse, quantity breaks, other fees, special pricing
+(internal reference only, never applied), and the raw data Ingram sent.
+
+Discontinued and restricted products are hidden unless you tick **Include discontinued / restricted**.
+
+### Data-quality report
+**Data-quality report** in the top bar. It shows how many products were pulled, how many have a part number,
+UPC, specifications and images, what's in stock in Canada, what was left out and why, and a "Things to look at" list.
+Check **"How Ingram's categories were translated"** after each catalog pull. It shows how each of Ingram's
+categories was sorted into ours.
+
+### Stop
+Double-click **Stop Catalog**. Your data is kept. Docker Desktop must be running whenever you use the catalog.
+
+---
+
+## Changing what gets pulled
+
+The file `config\scope.json` (open with Notepad) lists:
+- **manufacturers**: what to search Ingram for, plus the names Ingram uses for each manufacturer. If the report lists
+  "Manufacturer names we didn't recognise" and one of them is really Lenovo, HP or Dell, add it here.
+- **rules**: how Ingram's categories become ours (Laptops, Desktops, Monitors, Docking Stations), and what to leave
+  out (refurbished, tablets, parts, bags, warranties). Rules are checked top to bottom; the first match wins.
+- **warehouseCountries**: lets us state which warehouses are Canadian once we know Ingram's warehouse codes.
+
+Changes apply on the next catalog pull. No restart is needed. If you're unsure about an edit, ask before saving.
+
+## Automatic schedule (off for now)
+
+During the prototype, updates run only when you click the buttons. To try the automatic schedule, open
+**Edit Settings** and set `SCHEDULE_ENABLED=true`. By default it pulls the full catalog at 2 am and refreshes prices
+and stock at 6 am and 1 pm Pacific. For a short test, also set e.g. `SCHEDULE_REFRESH_EVERY_MINUTES=15`.
+Save, then double-click **Start Catalog** again. Set it back to `false` (and the minutes to blank) to switch it off.
+The PC must be on with Docker Desktop running for scheduled updates to happen.
+
+## If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| "Could not start. Is Docker Desktop running?" | Open Docker Desktop, wait for **Engine running**, try again. |
+| "The settings file .env is missing" | Double-click **Edit Settings**, fill it in, save. |
+| ✘ Could not sign in | The client ID/secret is wrong, or `INGRAM_ENV` doesn't match the app the keys belong to. |
+| ✘ Catalog search failed … 401/403 | The app isn't approved for the Product Catalog API, or the customer number is wrong. |
+| An update shows **failed** on the Updates page | The message says why. Every call to Ingram is logged with a reference number Ingram support can trace. |
+| Page doesn't open | Make sure the catalog is started, then go to http://localhost:8080. |
+
+---
+
+## For developers
+
+TypeScript (Node 22) + PostgreSQL. `npm install`, then:
+
+| Command | What it does |
+|---|---|
+| `npm test` | Unit tests. Set `TEST_DATABASE_URL` to a throwaway database to include the database tests. |
+| `npm run cli -- smoke` | Connection check (needs the `INGRAM_*` variables). |
+| `npm run cli -- catalog` / `refresh` / `report` / `serve` | Run a job, print the report, start the page (needs `DATABASE_URL`). |
+
+Layout: `src/ingram` (API client with endpoint allowlist, parsing, connector), `src/jobs` (catalog pull, price & stock
+refresh, schedule), `src/web` (search page), `src/report` (data-quality report), `db/migrations` (schema),
+`config/scope.json` (scope), `test/fixtures` (Ingram responses). Background: `CLAUDE.md`, `CONTEXT.md`, `docs/`.

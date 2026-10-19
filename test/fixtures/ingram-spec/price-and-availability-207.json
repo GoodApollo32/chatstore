@@ -1,0 +1,71 @@
+[
+  {
+    "productStatusMessage": "ACOPS ARE AVAILABLE FOR THIS CUSTOMER AND SKU",
+    "ingramPartNumber": "123512",
+    "vendorPartNumber": "LS1016A-CISCO",
+    "customerPartNumber": "A5-8963TEST",
+    "upc": "0718908728116",
+    "partNumberType": "T",
+    "vendorNumber": "1234",
+    "vendorName": "INTERNAL",
+    "description": "6FT PARALLEL PRINTER DB25M TO  SVCS CENT36M PRO SERIES 28AWG ROHS",
+    "productClass": "P",
+    "uom": "EA",
+    "acceptBackOrder": true,
+    "productAuthorized": true,
+    "returnableProduct": true,
+    "endUserInfoRequired": true,
+    "availability": {
+      "available": true,
+      "totalAvailability": 240479,
+      "availabilityByWarehouse": [
+        {
+          "location": "Fort Worth, TX",
+          "warehouseId": "20",
+          "quantityAvailable": 105415
+        },
+        {
+          "warehouseId": "25",
+          "quantityAvailable": 100000
+        },
+        {
+          "location": "Millington, TN",
+          "warehouseId": "30",
+          "quantityAvailable": 9981
+        },
+        {
+          "location": "Carol Stream, IL",
+          "warehouseId": "40",
+          "quantityAvailable": 1049
+        },
+        {
+          "location": "Jonestown, PA",
+          "warehouseId": "80",
+          "quantityAvailable": 995
+        },
+        {
+          "location": "Mira Loma, CA",
+          "warehouseId": "10",
+          "quantityAvailable": 23039
+        },
+        {
+          "warehouseId": "81"
+        },
+        {
+          "warehouseId": "05"
+        }
+      ],
+      "pricing": {
+        "currencyCode": "USD",
+        "retailPrice": 10,
+        "mapPrice": 540.25,
+        "customerPrice": 5.43
+      }
+    }
+  },
+  {
+    "productStatusCode": "E",
+    "productStatusMessage": "Product not found for IngramPartNumber:  12351211",
+    "ingramPartNumber": "12351211"
+  }
+]

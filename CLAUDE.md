@@ -81,6 +81,14 @@ Design so later phases aren't blocked: every distributor connector emits the sam
 product + offer + stock shape; capture CAD pricing, Canadian vs US warehouses, and BC EHF (likely in
 Ingram `serviceFees`).
 
+## Codebase (Milestone 1 build)
+
+- `src/ingram/` API client (allowlist, token, retries, call log) → `parse.ts` → `connector.ts` (normalized shapes in
+  `src/domain/types.ts`, shared by future distributors). `src/jobs/` catalog pull, price & stock refresh, schedule.
+  `src/web/` search/updates/report pages. `config/scope.json` is Chris's editable scope and category rules.
+- `npm test` (set `TEST_DATABASE_URL` for DB tests), `npm run typecheck`, `npm run cli -- smoke|catalog|refresh|report|serve`.
+- Chris runs it via the `.bat` shortcuts + Docker Compose; keep those and README in step with any change.
+
 ## Technical rules
 
 - Stack: TypeScript (Node) + PostgreSQL. Approved by Chris (see `docs/adr/0002`).

@@ -1,0 +1,54 @@
+{
+  "_readme": "What the catalog pulls and how products are sorted. Safe to edit; changes apply on the next catalog pull. See README section 'Changing what gets pulled'.",
+
+  "manufacturers": [
+    {
+      "name": "Lenovo",
+      "ingramSearch": "Lenovo",
+      "namesUsedByDistributors": ["LENOVO", "LENOVO CANADA", "LENOVO (CANADA)", "LENOVO GLOBAL", "LENOVO COMMERCIAL", "LENOVO PC", "LENOVO PCG"]
+    },
+    {
+      "name": "HP",
+      "ingramSearch": "HP",
+      "namesUsedByDistributors": ["HP", "HP INC", "HP INC.", "HP CANADA", "HP INC CANADA", "HEWLETT PACKARD", "HEWLETT-PACKARD", "HP COMMERCIAL"]
+    },
+    {
+      "name": "Dell",
+      "ingramSearch": "Dell",
+      "namesUsedByDistributors": ["DELL", "DELL CANADA", "DELL TECHNOLOGIES", "DELL COMPUTER", "DELL CANADA INC"]
+    }
+  ],
+
+  "categories": ["Laptops", "Desktops", "Monitors", "Docking Stations"],
+
+  "_rulesReadme": "Rules are checked top to bottom; the first match wins. Each rule can test the distributor's category ('distributorCategory'), sub-category ('distributorSubCategory') and/or product description ('description', or 'notDescription' for must-not-contain) (patterns, not case sensitive). A rule either puts the product in one of our categories ('putIn') or leaves it out ('exclude', with the reason shown in the data-quality report). Products no rule matches are left out as 'Not in version-one categories'. These are starting guesses: check the translation table in the data-quality report after each pull.",
+
+  "rules": [
+    { "exclude": "Refurbished or open box", "description": "REFURB|RENEWED|RECERTIFIED|OPEN[ -]?BOX" },
+    { "exclude": "Refurbished or open box", "distributorSubCategory": "REFURB" },
+
+    { "exclude": "Warranty and service add-ons", "distributorCategory": "SERVICE|WARRANT|SUPPORT|CARE ?PACK" },
+    { "exclude": "Warranty and service add-ons", "distributorSubCategory": "SERVICE|WARRANT|SUPPORT|CARE ?PACK|PROTECTION PLAN" },
+
+    { "putIn": "Docking Stations", "distributorSubCategory": "DOCK|PORT REPLICATOR" },
+
+    { "exclude": "Tablets", "distributorSubCategory": "^TABLETS?$|TABLET PC|SLATE" },
+    { "exclude": "Tablets", "distributorSubCategory": "TABLET", "description": "\\bTAB(LET)?\\b", "notDescription": "2[ -]?IN[ -]?1|X360|YOGA|DETACHABLE|CONVERTIBLE|FLIP|X2\\b" },
+
+    { "putIn": "Docking Stations", "distributorSubCategory": "ACCESSOR|ADAPTER|PERIPHERAL|HUB|CONNECTIVITY", "description": "DOCKING STATION|\\bDOCK\\b|PORT REPLICATOR" },
+
+    { "exclude": "Parts, bags and accessories", "distributorSubCategory": "ACCESSOR|BATTER|CASE|BAG|CARRY|ADAPTER|CHARGER|POWER SUPPL|MEMORY|STORAGE|DRIVE|KEYBOARD|MOUSE|MICE|CABLE|PART|SPARE|COMPONENT|MOUNT|STAND|PRIVACY|FILTER|LOCK|STYLUS|PEN\\b" },
+
+    { "putIn": "Laptops", "distributorSubCategory": "NOTEBOOK|LAPTOP|CHROMEBOOK|MOBILE WORKSTATION|2[ -]?IN[ -]?1|CONVERTIBLE" },
+    { "putIn": "Desktops", "distributorSubCategory": "DESKTOP|ALL[ -]?IN[ -]?ONE|\\bAIO\\b|MINI PC|THIN CLIENT|WORKSTATION|TOWER|SMALL FORM" },
+    { "putIn": "Monitors", "distributorSubCategory": "MONITOR|DISPLAY|LCD|LED" },
+
+    { "putIn": "Docking Stations", "description": "DOCKING STATION|\\bDOCK\\b|PORT REPLICATOR" }
+  ],
+
+  "warehouseCountries": {
+    "_readme": "Fill in once real Ingram Canada warehouse IDs are known, e.g. \"10\": \"US\". Until then the country is worked out from the warehouse's city and province/state."
+  },
+
+  "fetchProductDetails": true
+}

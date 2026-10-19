@@ -51,3 +51,17 @@ must still be confirmed in the sandbox (open questions Q1–Q6 in `docs/handoff-
 
 Order create (v6, v7), modify, cancel; quote create; returns create. The connector will only expose the
 token, catalog search, details, and price & availability calls. Any other path will be rejected before it is sent.
+
+## Found while building the connector (spec re-read, 2026-10-19)
+
+12. **`IM-CorrelationID` is limited to 32 characters.** A standard dashed UUID is 36, so the connector sends a UUID
+    without dashes (32 hex characters).
+13. **Price & availability documents no specs field.** `includeProductAttributes` exists as a flag, but the response
+    schema has no attribute list. The parser accepts the shapes Ingram uses elsewhere (`productAttributes`,
+    `technicalSpecifications` with `attributeName`/`attributeValue`) in case it shows up for Canada.
+14. **Product details carry specs but no images.** `technicalSpecifications[]` (`headername`, `attributename`,
+    `attributevalue`), `productDetailDescription`, and `indicators.isRefurbished`. No image fields anywhere in the
+    catalog APIs, so images are a content-provider gap.
+15. **Warehouse IDs come back as numbers in one example and strings in another**, and some warehouses have no
+    `location`. Those can't be placed in a country and never count as In Stock until mapped in `config/scope.json`.
+16. **The 207 example nests `pricing` inside `availability`**, unlike the 200 example. The parser accepts both.
