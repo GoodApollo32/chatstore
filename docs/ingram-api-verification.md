@@ -44,8 +44,12 @@ must still be confirmed in the sandbox (open questions Q1–Q6 in `docs/handoff-
    country field, so Canada vs. US must be derived from `location`/`warehouseId` (Q5).
 10. **Stock Update webhook** (`/resellers/v1/webhooks/availabilityupdate`) exists. It's not Phase 1, but it could later
     replace some of the hourly polling.
-11. **Rate limits are not in the spec.** They're only in the portal (Q6). Until then, assume conservative defaults
-    (about 1 request/second, backoff on 429/5xx).
+11. **Rate limits are not in the spec.** They're only in the portal (Q6). Portal text (from Chris, 2026-10-19):
+    60 calls per minute per endpoint for GETs; every reply carries `X-RateLimit-Limit` (e.g. 500, "per app per
+    transaction"), `X-RateLimit-Remaining` and `X-RateLimit-Reset` (Unix time); limits are per API app; over the
+    limit → 429. The client sends at most 50/minute, records these headers on every call, and when Remaining hits 0
+    or a 429 arrives it waits until Reset (up to an hour; beyond that the run stops and says when to retry).
+    Still open: what period the 500 covers.
 
 ## Endpoints that must be unreachable in Phase 1 (safety rail)
 

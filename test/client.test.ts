@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IngramConfig } from '../src/config.js';
-import { assertAllowed, EndpointNotAllowedError, IngramApiError, IngramClient, type ApiCallRecord } from '../src/ingram/client.js';
+import { assertAllowed, EndpointNotAllowedError, IngramApiError, IngramClient, readRateLimit, type ApiCallRecord } from '../src/ingram/client.js';
+import { loadIngramConfig } from '../src/config.js';
 import { IngramConnector } from '../src/ingram/connector.js';
 
 const config: IngramConfig = {
@@ -206,5 +207,59 @@ describe('catalog search', () => {
   it('still fails on other errors', async () => {
     const { conn } = connector((url) => (url.pathname.includes('oauth') ? token() : json(403, { message: 'Forbidden' })));
     await expect(conn.searchPage('Dell', 1)).rejects.toThrow('403');
+  });
+});
+
+describe('Ingram rate limits', () => {
+  const nowSec = () => Math.floor(Date.now() / 1000);
+
+  it('reads the X-RateLimit headers (reset as Unix time, or as seconds from now)', () => {
+    const at = new Response(null, { headers: { 'X-RateLimit-Limit': '500', 'X-RateLimit-Remaining': '499', 'X-RateLimit-Reset': '1392815263' } });
+    expect(readRateLimit(at)).toEqual({ limit: 500, remaining: 499, resetAt: new Date(1392815263 * 1000) });
+    const inSeconds = new Response(null, { headers: { 'X-RateLimit-Reset': '30' } });
+    expect(readRateLimit(inSeconds, 1_000_000)!.resetAt).toEqual(new Date(1_030_000));
+    expect(readRateLimit(new Response(null))).toBeNull();
+  });
+
+  it('on a 429, waits until Ingram\'s reset time and then carries on', async () => {
+    let api = 0;
+    const { c, sleeps, calls } = client((url) => {
+      if (url.pathname.includes('oauth')) return token();
+      return ++api === 1
+        ? json(429, { message: 'Too Many Requests' }, { 'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(nowSec() + 40) })
+        : json(200, { ok: true }, { 'X-RateLimit-Limit': '60', 'X-RateLimit-Remaining': '59' });
+    });
+    expect((await c.get('/resellers/v6/catalog')).body).toEqual({ ok: true });
+    const waited = Math.max(...sleeps);
+    expect(waited).toBeGreaterThan(35_000);
+    expect(waited).toBeLessThanOrEqual(41_000);
+    expect(calls.filter((r) => r.path.includes('catalog')).map((r) => r.rateLimit?.remaining)).toEqual([0, 59]);
+  });
+
+  it('when a reply says no requests are left, holds the next one until the reset', async () => {
+    const { c, sleeps } = client((url) =>
+      url.pathname.includes('oauth') ? token()
+        : json(200, {}, { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(nowSec() + 20) }));
+    await c.get('/resellers/v6/catalog');
+    expect(Math.max(0, ...sleeps)).toBeLessThan(1000);
+    await c.get('/resellers/v6/catalog');
+    expect(Math.max(...sleeps)).toBeGreaterThan(15_000);
+  });
+
+  it('stops with a plain message when the allowance resets more than an hour away', async () => {
+    const { c, requests } = client((url) =>
+      url.pathname.includes('oauth') ? token()
+        : json(429, { message: 'Quota exceeded' }, { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(nowSec() + 3 * 3600) }));
+    const err = await c.get('/resellers/v6/catalog').catch((e) => e);
+    expect(err.status).toBe(429);
+    expect(err.message).toMatch(/allowance is used up until .* \(Pacific\)\. Run the update again after that/);
+    expect(requests.filter((r) => !r.url.pathname.includes('oauth'))).toHaveLength(1);
+  });
+
+  it('never goes faster than 50 requests a minute, whatever the setting says', () => {
+    const base = { INGRAM_CLIENT_ID: 'a', INGRAM_CLIENT_SECRET: 'b', INGRAM_CUSTOMER_NUMBER: 'c' };
+    expect(loadIngramConfig({ ...base, INGRAM_MAX_REQUESTS_PER_SECOND: '1' }).maxRequestsPerSecond * 60).toBeCloseTo(50);
+    expect(loadIngramConfig(base).maxRequestsPerSecond * 60).toBeCloseTo(50);
+    expect(loadIngramConfig({ ...base, INGRAM_MAX_REQUESTS_PER_SECOND: '0.5' }).maxRequestsPerSecond).toBe(0.5);
   });
 });

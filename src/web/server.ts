@@ -258,10 +258,11 @@ async function updatesPage(db: Db, runner: JobRunner, msg: string | null): Promi
 }
 
 // No call to Ingram for this long while an update is running means it's probably stuck. Retries and
-// back-off waits are logged as calls too, so a healthy update is never quiet for this long.
+// back-off waits are logged as calls too, so a healthy update is never quiet for this long, except
+// while it waits for Ingram's rate-limit allowance to reset (then counted from the reset time).
 const STUCK_MINUTES = 5;
 
-/** What Ingram has been telling us: recent calls, "slow down" (rate limit) replies, errors. */
+/** What Ingram has been telling us: recent calls, rate-limit allowance and "slow down" replies, errors. */
 async function connectionPanel(db: Db, running: any): Promise<string> {
   const { rows: [last] } = await db.query(`SELECT at, status, error FROM api_call_log ORDER BY id DESC LIMIT 1`);
   if (!last) return '';
@@ -274,20 +275,36 @@ async function connectionPanel(db: Db, running: any): Promise<string> {
   const { rows: [limited] } = await db.query(
     `SELECT at, error FROM api_call_log WHERE status = 429 AND at > now() - interval '24 hours' ORDER BY id DESC LIMIT 1`,
   );
-  const quietMinutes = (Date.now() - new Date(last.at).getTime()) / 60_000;
-  const runningMinutes = running ? (Date.now() - new Date(running.started_at).getTime()) / 60_000 : 0;
-  const stuck = running && quietMinutes >= STUCK_MINUTES && runningMinutes >= STUCK_MINUTES;
+  const { rows: [allowance] } = await db.query(
+    `SELECT rate_limit_limit AS "limit", rate_limit_remaining AS remaining, rate_limit_reset AS reset, status
+     FROM api_call_log WHERE rate_limit_limit IS NOT NULL OR rate_limit_remaining IS NOT NULL OR rate_limit_reset IS NOT NULL
+     ORDER BY id DESC LIMIT 1`,
+  );
+  const now = Date.now();
+  const resetAt = allowance?.reset ? new Date(allowance.reset).getTime() : 0;
+  const waitingForReset = running && resetAt > now && (allowance.status === 429 || allowance.remaining === 0);
+  const quietSince = Math.max(new Date(last.at).getTime(), resetAt <= now ? resetAt : 0);
+  const quietMinutes = (now - quietSince) / 60_000;
+  const runningMinutes = running ? (now - new Date(running.started_at).getTime()) / 60_000 : 0;
+  const stuck = running && !waitingForReset && quietMinutes >= STUCK_MINUTES && runningMinutes >= STUCK_MINUTES;
   const lastResult = last.status === null ? 'no reply' : last.status === 429 ? 'asked us to slow down' : last.status < 400 ? 'OK' : `error ${last.status}`;
+  const minutesTo = (t: number) => Math.max(1, Math.round((t - now) / 60_000));
 
   return `<h2>Connection to Ingram</h2>
+    ${waitingForReset ? `<div class="notice"><b>Paused for Ingram's rate limit.</b> Our allowance is used up until ${when(new Date(resetAt))}
+      (in about ${minutesTo(resetAt)} min). The update carries on by itself after that; you don't need to do anything.</div>` : ''}
     ${stuck ? `<div class="notice"><b>This update looks stuck.</b> Nothing has been heard from Ingram for ${Math.round(quietMinutes)} minutes.
       Double-click <b>Stop Catalog</b>, then <b>Start Catalog</b>. A catalog pull continues where it stopped.</div>` : ''}
-    ${limited ? `<div class="notice"><b>Rate limit:</b> Ingram asked us to slow down ${ago(limited.at)} (${when(limited.at)}).
-      The program waits and tries again on its own; if Ingram keeps refusing, the update stops with a "rate limit" message below.
+    ${limited && !waitingForReset ? `<div class="notice"><b>Rate limit:</b> Ingram asked us to slow down ${ago(limited.at)} (${when(limited.at)}).
+      The program waits until Ingram's allowance resets and then carries on; if that's more than an hour away, the update
+      stops with a "rate limit" message below saying when to run it again.
       ${limited.error ? `<div class="small">Ingram said: ${esc(limited.error)}</div>` : ''}</div>` : ''}
     <div class="card small">
       Last request to Ingram: ${ago(last.at)} (${when(last.at)}), result: ${esc(lastResult)}${last.error && last.status !== 429 ? ` (${esc(last.error)})` : ''}.<br>
-      Last hour: ${hour.calls} requests, ${hour.slow_down} "slow down" (rate limit) replies, ${hour.errors} errors or no reply.
+      Last hour: ${hour.calls} requests, ${hour.slow_down} "slow down" (rate limit) replies, ${hour.errors} errors or no reply.<br>
+      ${allowance
+        ? `Ingram's allowance at the last reply: ${allowance.remaining ?? '?'} of ${allowance.limit ?? '?'} requests left${resetAt ? `, ${resetAt > now ? 'resets' : 'reset'} ${when(new Date(resetAt))}` : ''}.`
+        : "Ingram hasn't reported a rate-limit allowance yet."}
       ${!limited ? '<br>No rate limiting from Ingram in the last 24 hours.' : ''}
     </div>`;
 }

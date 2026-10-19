@@ -235,6 +235,20 @@ describe.skipIf(!url)('jobs against a real database', () => {
       expect(html).toContain('Quota limit exceeded');
       expect(html).toContain('1 "slow down" (rate limit) replies');
       expect(html).toContain('looks stuck');
+      expect(html).toContain("Ingram hasn't reported a rate-limit allowance yet");
+
+      // Allowance used up, resetting in 30 minutes: paused, not stuck.
+      await db.query(
+        `INSERT INTO api_call_log (distributor, correlation_id, method, path, status, duration_ms, attempt, error, at,
+                                   rate_limit_limit, rate_limit_remaining, rate_limit_reset)
+         VALUES ('ingram', 'c', 'GET', '/resellers/v6/catalog', 429, 10, 1, 'Too Many Requests', now() - interval '10 minutes',
+                 500, 0, now() + interval '30 minutes')`,
+      );
+      html = await (await fetch(`${base}/updates`)).text();
+      expect(html).toContain("Paused for Ingram's rate limit");
+      expect(html).toContain('in about 30 min');
+      expect(html).not.toContain('looks stuck');
+      expect(html).toContain("Ingram's allowance at the last reply: 0 of 500 requests left, resets");
     } finally {
       server.close();
     }

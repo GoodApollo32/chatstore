@@ -46,6 +46,12 @@ function list(value: string | undefined, fallback: string[]): string[] {
   return value.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+/**
+ * Ingram's published limit is 60 calls per minute per endpoint. We stay at 50 so clock drift and
+ * retries never tip us over; the setting can lower this but not raise it.
+ */
+export const INGRAM_PUBLISHED_MAX_PER_SECOND = 50 / 60;
+
 export function loadIngramConfig(env: Env = process.env): IngramConfig {
   const ingramEnv = (env.INGRAM_ENV?.trim() || 'sandbox') as IngramEnv;
   if (ingramEnv !== 'sandbox' && ingramEnv !== 'production') {
@@ -61,7 +67,7 @@ export function loadIngramConfig(env: Env = process.env): IngramConfig {
     senderId: env.INGRAM_SENDER_ID?.trim() || undefined,
     baseUrl: ingramEnv === 'sandbox' ? `${host}/sandbox` : host,
     authBaseUrl: host,
-    maxRequestsPerSecond: Number(env.INGRAM_MAX_REQUESTS_PER_SECOND ?? '1') || 1,
+    maxRequestsPerSecond: Math.min(INGRAM_PUBLISHED_MAX_PER_SECOND, Number(env.INGRAM_MAX_REQUESTS_PER_SECOND ?? '') || INGRAM_PUBLISHED_MAX_PER_SECOND),
   };
 }
 

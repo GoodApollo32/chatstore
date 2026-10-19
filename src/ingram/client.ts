@@ -38,6 +38,14 @@ export interface ApiCallRecord {
   durationMs: number;
   attempt: number;
   error: string | null;
+  /** Ingram's X-RateLimit-* headers on this reply, when sent. */
+  rateLimit?: RateLimitInfo | null;
+}
+
+export interface RateLimitInfo {
+  limit: number | null;
+  remaining: number | null;
+  resetAt: Date | null;
 }
 
 export interface ClientOptions {
@@ -63,6 +71,12 @@ export function newCorrelationId(): string {
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
+/**
+ * Longest we'll wait, inside an update, for Ingram's rate-limit allowance to reset. Beyond this the
+ * update stops with a message saying when to run it again (a catalog pull then continues where it stopped).
+ */
+export const MAX_RATE_LIMIT_WAIT_MS = 60 * 60_000;
+
 export class IngramClient {
   private readonly fetchFn: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -71,6 +85,8 @@ export class IngramClient {
   private token: { value: string; expiresAt: number } | null = null;
   private tokenStyle: 'oauth30' | 'oauth20' | null = null;
   private nextSlot = 0;
+  /** Ingram said our allowance is used up until this time (ms since epoch). */
+  private pausedUntil = 0;
 
   constructor(
     private readonly config: IngramConfig,
@@ -133,10 +149,15 @@ export class IngramClient {
       }
       const parsed = await readBody(res);
       const ok = res.ok;
+      const rateLimit = readRateLimit(res);
       this.log({
         correlationId, method, path, status: res.status, durationMs: Date.now() - started, attempt,
-        error: ok ? null : summarizeError(parsed),
+        error: ok ? null : summarizeError(parsed), rateLimit,
       });
+      // Allowance used up: hold the next request until Ingram's counter resets.
+      if (rateLimit?.resetAt && (res.status === 429 || rateLimit.remaining === 0)) {
+        this.pausedUntil = Math.max(this.pausedUntil, rateLimit.resetAt.getTime());
+      }
       if (ok) return { status: res.status, body: parsed as T };
 
       if (res.status === 401 && !refreshedAfter401) {
@@ -144,8 +165,13 @@ export class IngramClient {
         this.token = null;
         continue;
       }
+      if (res.status === 429) {
+        const wait = Math.max(this.pausedUntil - Date.now(), retryAfterMs(res) ?? 0);
+        if (wait > MAX_RATE_LIMIT_WAIT_MS) throw rateLimitExhausted(Date.now() + wait, correlationId, parsed);
+      }
       if (RETRYABLE.has(res.status) && attempt < this.maxAttempts) {
-        await this.sleep(retryAfterMs(res) ?? backoffMs(attempt));
+        // A known reset time is waited for in waitForSlot; otherwise back off.
+        if (!(res.status === 429 && this.pausedUntil > Date.now())) await this.sleep(retryAfterMs(res) ?? backoffMs(attempt));
         continue;
       }
       const prefix = res.status === 429 ? `Ingram's rate limit: it asked us to slow down ${attempt} times in a row. ` : '';
@@ -161,12 +187,18 @@ export class IngramClient {
     return err instanceof Error ? err.message : String(err);
   }
 
-  /** Spaces requests out to stay under the configured requests-per-second. */
+  /**
+   * Spaces requests out to stay under the configured requests-per-second, and holds them while
+   * Ingram's rate-limit allowance is used up.
+   */
   private async waitForSlot(): Promise<void> {
     const interval = 1000 / this.config.maxRequestsPerSecond;
     const now = Date.now();
-    const wait = Math.max(0, this.nextSlot - now);
-    this.nextSlot = Math.max(now, this.nextSlot) + interval;
+    const paused = Math.max(0, this.pausedUntil - now);
+    if (paused > MAX_RATE_LIMIT_WAIT_MS) throw rateLimitExhausted(this.pausedUntil, '', null);
+    const wait = Math.max(paused, this.nextSlot - now);
+    this.nextSlot = Math.max(now + paused, this.nextSlot) + interval;
+    this.pausedUntil = 0;
     if (wait > 0) await this.sleep(wait);
   }
 
@@ -231,13 +263,18 @@ export class IngramClient {
       }
       const parsed: any = await readBody(res);
       const ok = res.ok && typeof parsed?.access_token === 'string';
-      this.log({
+      const rateLimit = readRateLimit(res);
+      if (rateLimit?.resetAt && (res.status === 429 || rateLimit.remaining === 0)) {
+        this.pausedUntil = Math.max(this.pausedUntil, rateLimit.resetAt.getTime());
+      }
+      this.log({ rateLimit,
         correlationId, method, path, status: res.status, durationMs: Date.now() - started, attempt,
         error: ok ? null : summarizeError(parsed),
       });
       if (ok) return parsed;
+      if (res.status === 429 && this.pausedUntil - Date.now() > MAX_RATE_LIMIT_WAIT_MS) throw rateLimitExhausted(this.pausedUntil, correlationId, parsed);
       if (RETRYABLE.has(res.status) && attempt < this.maxAttempts) {
-        await this.sleep(retryAfterMs(res) ?? backoffMs(attempt));
+        if (!(res.status === 429 && this.pausedUntil > Date.now())) await this.sleep(retryAfterMs(res) ?? backoffMs(attempt));
         continue;
       }
       throw new IngramApiError(`Sign-in failed (${style}, HTTP ${res.status}): ${summarizeError(parsed)}`, res.status, correlationId, parsed);
@@ -255,9 +292,37 @@ function retryAfterMs(res: Response): number | null {
   const header = res.headers.get('retry-after');
   if (!header) return null;
   const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.min(120_000, seconds * 1000);
+  if (Number.isFinite(seconds)) return seconds * 1000;
   const date = Date.parse(header);
-  return Number.isNaN(date) ? null : Math.min(120_000, Math.max(0, date - Date.now()));
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+}
+
+/**
+ * Ingram's X-RateLimit-Limit / -Remaining / -Reset headers. Reset is documented as Unix time; a small
+ * number is read as "seconds from now" in case some endpoints send that instead.
+ */
+export function readRateLimit(res: Response, now = Date.now()): RateLimitInfo | null {
+  const n = (name: string) => {
+    const v = res.headers.get(name);
+    if (v == null || v.trim() === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
+  const limit = n('x-ratelimit-limit');
+  const remaining = n('x-ratelimit-remaining');
+  const reset = n('x-ratelimit-reset');
+  if (limit === null && remaining === null && reset === null) return null;
+  let resetAt: Date | null = null;
+  if (reset !== null) resetAt = new Date(reset > 1e12 ? reset : reset > 1e9 ? reset * 1000 : now + reset * 1000);
+  return { limit, remaining, resetAt };
+}
+
+function rateLimitExhausted(untilMs: number, correlationId: string, body: unknown): IngramApiError {
+  const at = new Date(untilMs).toLocaleString('en-CA', { timeZone: 'America/Vancouver', dateStyle: 'medium', timeStyle: 'short' });
+  return new IngramApiError(
+    `Ingram's rate limit: our allowance is used up until ${at} (Pacific). Run the update again after that; a catalog pull continues where it stopped.`,
+    429, correlationId, body,
+  );
 }
 
 async function readBody(res: Response): Promise<unknown> {

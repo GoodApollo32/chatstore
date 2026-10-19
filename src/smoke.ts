@@ -119,4 +119,8 @@ async function suggestSpelling(connector: IngramConnector, term: string, say: (s
 function printCalls(calls: ApiCallRecord[]): void {
   console.log('\nCalls made (correlation IDs for Ingram support):');
   for (const c of calls) console.log(`  ${c.method.padEnd(4)} ${c.path.padEnd(48)} ${String(c.status ?? 'network error').padEnd(4)} ${c.durationMs}ms  ${c.correlationId}${c.error ? `  ${c.error}` : ''}`);
+  const rl = [...calls].reverse().find((c) => c.rateLimit)?.rateLimit;
+  console.log(rl
+    ? `\nIngram's rate-limit allowance at the last reply: ${rl.remaining ?? '?'} of ${rl.limit ?? '?'} requests left${rl.resetAt ? `, resets ${rl.resetAt.toLocaleString('en-CA', { timeZone: 'America/Vancouver', dateStyle: 'medium', timeStyle: 'short' })} (Pacific)` : ''}.`
+    : "\nIngram didn't report a rate-limit allowance.");
 }

@@ -22,9 +22,11 @@ export class CallLogger {
   readonly record = (r: ApiCallRecord): void => {
     const p = this.db
       .query(
-        `INSERT INTO api_call_log (run_id, distributor, correlation_id, method, path, status, duration_ms, attempt, error)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [this.runId, this.distributor, r.correlationId, r.method, r.path, r.status, r.durationMs, r.attempt, r.error],
+        `INSERT INTO api_call_log (run_id, distributor, correlation_id, method, path, status, duration_ms, attempt, error,
+                                   rate_limit_limit, rate_limit_remaining, rate_limit_reset)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [this.runId, this.distributor, r.correlationId, r.method, r.path, r.status, r.durationMs, r.attempt, r.error,
+         r.rateLimit?.limit ?? null, r.rateLimit?.remaining ?? null, r.rateLimit?.resetAt ?? null],
       )
       .catch((err) => console.error('Could not write call log:', err.message))
       .finally(() => this.pending.delete(p));
