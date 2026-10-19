@@ -254,6 +254,35 @@ describe.skipIf(!url)('jobs against a real database', () => {
     }
   });
 
+  it('shows which step a running catalog pull is on, and clears it when finished', async () => {
+    const seen: unknown[] = [];
+    const original = fake.priceAndStock.bind(fake);
+    fake.priceAndStock = async (skus) => {
+      seen.push((await db.query(`SELECT counts FROM sync_run ORDER BY id DESC LIMIT 1`)).rows[0].counts);
+      return original(skus);
+    };
+    const result = await run('catalog');
+    expect(seen[0]).toMatchObject({ stage: 'pricing', stageTotal: 6, priced: 0 });
+    expect(seen.at(-1)).toMatchObject({ stage: 'pricing', priced: 4 });
+    const final = (await db.query(`SELECT counts FROM sync_run WHERE id = $1`, [result.runId])).rows[0].counts;
+    expect(final.stage).toBeUndefined();
+
+    const { createServer } = await import('../src/web/server.js');
+    const { JobRunner } = await import('../src/jobs/runner.js');
+    await db.query(
+      `INSERT INTO sync_run (distributor, job_type, trigger, counts) VALUES ('ingram', 'catalog', 'manual', $1)`,
+      [JSON.stringify({ fetched: 15692, created: 439, unchanged: 3919, excluded: { x: 11334 }, priced: 4358, detailsFetched: 1200, stage: 'details', stageTotal: 4358 })],
+    );
+    const server = createServer(db, new JobRunner(db, 'config/scope.json'), () => scope).listen(0);
+    try {
+      const html = await (await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/updates`)).text();
+      expect(html).toContain('Step 3 of 3: fetching specifications one product at a time, 1,200 of 4,358 done (about 63 min left)');
+      expect(html).toContain('15,692 looked at');
+    } finally {
+      server.close();
+    }
+  });
+
   it('serves the search, product, updates and report pages', async () => {
     await run('catalog');
     const { createServer } = await import('../src/web/server.js');

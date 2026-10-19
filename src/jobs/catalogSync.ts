@@ -16,6 +16,9 @@ export interface CatalogCounts {
   priced: number;
   priceFailed: number;
   detailsFetched: number;
+  /** While running: which step the pull is on, and how many products that step has to get through. */
+  stage?: 'catalog' | 'pricing' | 'details';
+  stageTotal?: number;
 }
 
 interface ResumeState {
@@ -67,6 +70,7 @@ export async function runCatalogSync(deps: {
     try {
       // 1. Walk the catalog for each manufacturer.
       const notFound: string[] = [];
+      counts.stage = 'catalog';
       for (let m = state.manufacturerIndex; m < scope.manufacturers.length; m++) {
         const manufacturer = scope.manufacturers[m]!;
         const startPage = m === state.manufacturerIndex ? state.nextPage : 1;
@@ -111,27 +115,42 @@ export async function runCatalogSync(deps: {
          WHERE distributor = $1 AND listed AND price_stock_refreshed_at IS NULL ORDER BY id`,
         [connector.id],
       );
-      const priced = await refreshOffers(db, connector, unpriced.rows, { includeSpecs: true });
+      Object.assign(counts, { stage: 'pricing', stageTotal: unpriced.rows.length });
+      await saveProgress(db, runId, counts, state);
+      const priced = await refreshOffers(db, connector, unpriced.rows, {
+        includeSpecs: true,
+        onBatch: async (c) => {
+          Object.assign(counts, { priced: c.refreshed, priceFailed: c.failed });
+          await saveProgress(db, runId, counts, state);
+        },
+      });
       counts.priced = priced.counts.refreshed;
       counts.priceFailed = priced.counts.failed;
 
       // 4. Product details (specs, long description), where the distributor offers them.
       if (scope.fetchProductDetails && connector.details) {
-        await fetchDetails(db, connector, counts, notes);
+        await fetchDetails(db, connector, counts, notes, () => saveProgress(db, runId, counts, state));
       }
 
       const status = priced.aborted || counts.priceFailed > 0 || notFound.length ? 'partial' : 'succeeded';
+      clearStage(counts);
       await finishRun(db, runId, status, counts, notes, priced.batchErrors.length ? summarizeErrors(priced.batchErrors) : null);
       return { runId, status, summary: describe(counts) };
     } catch (err) {
       // Keep where we got to so the next pull continues from here.
       notes.push('Stopped part-way; the next pull will continue from where this one stopped.');
+      clearStage(counts);
       await finishRun(db, runId, 'failed', counts, notes, (err as Error).message, state);
       throw err;
     } finally {
       await callLogger.flush();
     }
   });
+}
+
+function clearStage(counts: CatalogCounts): void {
+  delete counts.stage;
+  delete counts.stageTotal;
 }
 
 async function recordExcluded(db: Db, runId: number, l: CatalogListing, reason: string, counts: CatalogCounts): Promise<void> {
@@ -239,11 +258,15 @@ async function sendToReview(db: Db, offerId: number, reason: string, candidates:
   if (rowCount) counts.sentToMatchReview++;
 }
 
-async function fetchDetails(db: Db, connector: DistributorConnector, counts: CatalogCounts, notes: string[]): Promise<void> {
+async function fetchDetails(
+  db: Db, connector: DistributorConnector, counts: CatalogCounts, notes: string[], saveProgressFn: () => Promise<void>,
+): Promise<void> {
   const { rows } = await db.query<{ id: number; sku: string }>(
     `SELECT id, distributor_sku AS sku FROM distributor_offer WHERE distributor = $1 AND listed AND details_status IS NULL ORDER BY id`,
     [connector.id],
   );
+  Object.assign(counts, { stage: 'details', stageTotal: rows.length });
+  await saveProgressFn();
   let unavailableStreak = 0;
   let refurbished = 0;
   for (const offer of rows) {
@@ -252,6 +275,7 @@ async function fetchDetails(db: Db, connector: DistributorConnector, counts: Cat
       unavailableStreak = 0;
       counts.detailsFetched++;
       if (d.isRefurbished) refurbished++;
+      if (counts.detailsFetched % 10 === 0) await saveProgressFn();
       await db.query(
         `UPDATE distributor_offer SET raw_details = $2, details_status = 'ok', refurbished = $3, updated_at = now() WHERE id = $1`,
         [offer.id, JSON.stringify(d.raw), d.isRefurbished],

@@ -225,11 +225,22 @@ const STATUS_TAG: Record<string, string> = {
   failed: '<span class="tag bad">failed</span>', interrupted: '<span class="tag bad">interrupted</span>', running: '<span class="tag">running…</span>',
 };
 
+// Ingram allows 60 requests a minute; we send at most 50.
+const minutesLeft = (requests: number) => (requests > 0 ? ` (about ${Math.max(1, Math.round(requests / 50))} min left)` : '');
+
 function describeCounts(jobType: string, c: any): string {
   if (!c || Object.keys(c).length === 0) return '';
   if (jobType === 'price_stock') return `${c.refreshed ?? 0} of ${c.requested ?? 0} updated · ${c.failed ?? 0} failed · ${c.costChanged ?? 0} cost changes · ${c.inStockCanada ?? 0} in stock in Canada`;
   const excluded = Object.values(c.excluded ?? {}).reduce((a: number, b: any) => a + Number(b), 0);
-  return `${c.fetched ?? 0} looked at · ${c.created ?? 0} new · ${c.updated ?? 0} changed · ${c.unchanged ?? 0} unchanged · ${excluded} left out · ${c.sentToMatchReview ?? 0} to match review · ${c.priced ?? 0} new priced`;
+  const n = (v: unknown) => Number(v ?? 0).toLocaleString('en-CA');
+  const numbers = `${n(c.fetched)} looked at · ${n(c.created)} new · ${n(c.updated)} changed · ${n(c.unchanged)} unchanged · ${n(excluded)} left out · ${n(c.sentToMatchReview)} to match review · ${n(c.priced)} new priced${c.priceFailed ? ` (${n(c.priceFailed)} failed)` : ''} · ${n(c.detailsFetched)} with specifications fetched`;
+  // While running, say which of the three steps the pull is on.
+  const stage =
+    c.stage === 'catalog' ? 'Step 1 of 3: going through Ingram\'s catalog'
+    : c.stage === 'pricing' ? `Step 2 of 3: pricing products, ${n((c.priced ?? 0) + (c.priceFailed ?? 0))} of ${n(c.stageTotal)} done`
+    : c.stage === 'details' ? `Step 3 of 3: fetching specifications one product at a time, ${n(c.detailsFetched)} of ${n(c.stageTotal)} done${minutesLeft(c.stageTotal - c.detailsFetched)}`
+    : null;
+  return stage ? `<b>${esc(stage)}</b><br>${numbers}` : numbers;
 }
 
 async function updatesPage(db: Db, runner: JobRunner, msg: string | null): Promise<string> {
@@ -252,7 +263,7 @@ async function updatesPage(db: Db, runner: JobRunner, msg: string | null): Promi
         <td class="small">${r.trigger === 'schedule' ? 'automatic' : r.trigger === 'manual' ? 'button' : 'command'}</td>
         <td>${STATUS_TAG[r.status] ?? esc(r.status)}${r.error_summary ? `<div class="small muted">${esc(r.error_summary)}</div>` : ''}
             ${(r.notes ?? []).map((n: string) => `<div class="small">${esc(n)}</div>`).join('')}</td>
-        <td class="small">${esc(describeCounts(r.job_type, r.counts))}</td></tr>`).join('')
+        <td class="small">${describeCounts(r.job_type, r.counts)}</td></tr>`).join('')
         || '<tr><td colspan="5" class="muted">Nothing has run yet.</td></tr>'}
     </table></div>`);
 }
