@@ -78,6 +78,9 @@ UPC, specifications and images, what's in stock in Canada, what was left out and
 Check **"How Ingram's categories were translated"** after each catalog pull. It shows how each of Ingram's
 categories was sorted into ours.
 
+The **Connection to Ingram** box on the Updates page shows when we last heard from Ingram, how many requests were
+sent in the last hour, and whether Ingram asked us to slow down (its rate limit).
+
 ### Stop
 Double-click **Stop Catalog**. Your data is kept. Docker Desktop must be running whenever you use the catalog.
 
@@ -112,6 +115,8 @@ The PC must be on with Docker Desktop running for scheduled updates to happen.
 | ✘ Catalog search failed … 401/403 | The app isn't approved for the Product Catalog API, or the customer number is wrong. |
 | ✘ Catalog search found no … products | Ingram spells that manufacturer differently. The check lists the names Ingram uses. Put the right one in `ingramSearch` for that manufacturer in `config\scope.json`, save, and run the check again. |
 | An update shows **partial** and says Ingram found no products for a manufacturer | Same fix as the line above. The other manufacturers were still pulled, and nothing already in the catalog was hidden. |
+| Updates page: **Rate limit: Ingram asked us to slow down** | Ingram is limiting how many requests we send. The program waits and retries on its own. If the update then stops with a "rate limit" message, wait an hour and run it again; it continues where it stopped. If it keeps happening, the "Ingram said" line is what to send Ingram support. |
+| Updates page: **This update looks stuck** | Double-click **Stop Catalog**, then **Start Catalog**. A catalog pull continues where it stopped. |
 | An update shows **failed** on the Updates page | The message says why. Every call to Ingram is logged with a reference number Ingram support can trace. |
 | Page doesn't open | Make sure the catalog is started, then go to http://localhost:8080. |
 

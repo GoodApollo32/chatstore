@@ -119,6 +119,31 @@ describe('requests', () => {
     expect(err.message).toContain('boom');
   });
 
+  it('says plainly when it gave up because of Ingram\'s rate limit', async () => {
+    const { c, requests } = client((url) => (url.pathname.includes('oauth') ? token() : json(429, { fault: { faultstring: 'Spike arrest violation' } })));
+    const err = await c.get('/resellers/v6/catalog').catch((e) => e);
+    expect(err.status).toBe(429);
+    expect(err.message).toMatch(/^Ingram's rate limit: it asked us to slow down 5 times in a row\..*Spike arrest violation/);
+    expect(requests.filter((r) => !r.url.pathname.includes('oauth'))).toHaveLength(5);
+  });
+
+  it('stops waiting for a reply that never comes, and retries', async () => {
+    let api = 0;
+    const f = fakeFetch(() => json(200, {}));
+    const hanging = (async (input: any, init: any) => {
+      if (String(input).includes('oauth')) return token();
+      if (++api === 1) {
+        return new Promise<Response>((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+      }
+      return f.fn(input, init);
+    }) as typeof fetch;
+    const calls: ApiCallRecord[] = [];
+    const c = new IngramClient(config, { fetch: hanging, onCall: (r) => calls.push(r), sleep: async () => {}, timeoutMs: 20 });
+    await c.get('/resellers/v6/catalog');
+    expect(api).toBe(2);
+    expect(calls.find((r) => r.status === null)?.error).toBe('no reply from Ingram within 0 seconds');
+  });
+
   it('does not retry a 400 and reports Ingram\'s validation message', async () => {
     const { c, requests } = client((url) =>
       url.pathname.includes('oauth') ? token()

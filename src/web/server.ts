@@ -245,6 +245,7 @@ async function updatesPage(db: Db, runner: JobRunner, msg: string | null): Promi
       <form method="post" action="/updates/catalog" style="display:inline"><button class="secondary" ${running ? 'disabled' : ''}>Run full catalog pull now</button></form>
       <p class="small muted">The price &amp; stock refresh takes a few minutes. The full catalog pull finds new and removed products and can take much longer; it also prices any new products it finds. ${running ? 'This page refreshes itself while an update is running.' : ''}</p>
     </div>
+    ${await connectionPanel(db, running)}
     <h2>Recent updates</h2>
     <div class="scroll"><table><tr><th>Started</th><th>What</th><th>How</th><th>Result</th><th>Numbers</th></tr>
       ${runs.map((r: any) => `<tr><td>${when(r.started_at)}</td><td>${JOB_LABEL[r.job_type] ?? r.job_type}</td>
@@ -254,6 +255,41 @@ async function updatesPage(db: Db, runner: JobRunner, msg: string | null): Promi
         <td class="small">${esc(describeCounts(r.job_type, r.counts))}</td></tr>`).join('')
         || '<tr><td colspan="5" class="muted">Nothing has run yet.</td></tr>'}
     </table></div>`);
+}
+
+// No call to Ingram for this long while an update is running means it's probably stuck. Retries and
+// back-off waits are logged as calls too, so a healthy update is never quiet for this long.
+const STUCK_MINUTES = 5;
+
+/** What Ingram has been telling us: recent calls, "slow down" (rate limit) replies, errors. */
+async function connectionPanel(db: Db, running: any): Promise<string> {
+  const { rows: [last] } = await db.query(`SELECT at, status, error FROM api_call_log ORDER BY id DESC LIMIT 1`);
+  if (!last) return '';
+  const { rows: [hour] } = await db.query(
+    `SELECT count(*)::int AS calls,
+            count(*) FILTER (WHERE status = 429)::int AS slow_down,
+            count(*) FILTER (WHERE status IS NULL OR status >= 500)::int AS errors
+     FROM api_call_log WHERE at > now() - interval '1 hour'`,
+  );
+  const { rows: [limited] } = await db.query(
+    `SELECT at, error FROM api_call_log WHERE status = 429 AND at > now() - interval '24 hours' ORDER BY id DESC LIMIT 1`,
+  );
+  const quietMinutes = (Date.now() - new Date(last.at).getTime()) / 60_000;
+  const runningMinutes = running ? (Date.now() - new Date(running.started_at).getTime()) / 60_000 : 0;
+  const stuck = running && quietMinutes >= STUCK_MINUTES && runningMinutes >= STUCK_MINUTES;
+  const lastResult = last.status === null ? 'no reply' : last.status === 429 ? 'asked us to slow down' : last.status < 400 ? 'OK' : `error ${last.status}`;
+
+  return `<h2>Connection to Ingram</h2>
+    ${stuck ? `<div class="notice"><b>This update looks stuck.</b> Nothing has been heard from Ingram for ${Math.round(quietMinutes)} minutes.
+      Double-click <b>Stop Catalog</b>, then <b>Start Catalog</b>. A catalog pull continues where it stopped.</div>` : ''}
+    ${limited ? `<div class="notice"><b>Rate limit:</b> Ingram asked us to slow down ${ago(limited.at)} (${when(limited.at)}).
+      The program waits and tries again on its own; if Ingram keeps refusing, the update stops with a "rate limit" message below.
+      ${limited.error ? `<div class="small">Ingram said: ${esc(limited.error)}</div>` : ''}</div>` : ''}
+    <div class="card small">
+      Last request to Ingram: ${ago(last.at)} (${when(last.at)}), result: ${esc(lastResult)}${last.error && last.status !== 429 ? ` (${esc(last.error)})` : ''}.<br>
+      Last hour: ${hour.calls} requests, ${hour.slow_down} "slow down" (rate limit) replies, ${hour.errors} errors or no reply.
+      ${!limited ? '<br>No rate limiting from Ingram in the last 24 hours.' : ''}
+    </div>`;
 }
 
 function reportPage(r: DataQualityReport): string {

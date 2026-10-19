@@ -46,6 +46,8 @@ export interface ClientOptions {
   onCall?: (record: ApiCallRecord) => void;
   sleep?: (ms: number) => Promise<void>;
   maxAttempts?: number;
+  /** Give up waiting for a reply after this long (then retry like a network error). */
+  timeoutMs?: number;
 }
 
 export function assertAllowed(method: string, path: string): void {
@@ -65,6 +67,7 @@ export class IngramClient {
   private readonly fetchFn: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly maxAttempts: number;
+  private readonly timeoutMs: number;
   private token: { value: string; expiresAt: number } | null = null;
   private tokenStyle: 'oauth30' | 'oauth20' | null = null;
   private nextSlot = 0;
@@ -76,6 +79,7 @@ export class IngramClient {
     this.fetchFn = options.fetch ?? fetch;
     this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.maxAttempts = options.maxAttempts ?? 5;
+    this.timeoutMs = options.timeoutMs ?? 90_000;
   }
 
   get environment(): string {
@@ -117,9 +121,11 @@ export class IngramClient {
       const started = Date.now();
       let res: Response;
       try {
-        res = await this.fetchFn(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+        res = await this.fetchFn(url, {
+          method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(this.timeoutMs),
+        });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = this.networkErrorMessage(err);
         this.log({ correlationId, method, path, status: null, durationMs: Date.now() - started, attempt, error: message });
         if (attempt >= this.maxAttempts) throw new IngramApiError(`Network error: ${message}`, 0, correlationId, null);
         await this.sleep(backoffMs(attempt));
@@ -142,11 +148,17 @@ export class IngramClient {
         await this.sleep(retryAfterMs(res) ?? backoffMs(attempt));
         continue;
       }
+      const prefix = res.status === 429 ? `Ingram's rate limit: it asked us to slow down ${attempt} times in a row. ` : '';
       throw new IngramApiError(
-        `Ingram returned ${res.status} for ${method} ${path}: ${summarizeError(parsed)}`,
+        `${prefix}Ingram returned ${res.status} for ${method} ${path}: ${summarizeError(parsed)}`,
         res.status, correlationId, parsed,
       );
     }
+  }
+
+  private networkErrorMessage(err: unknown): string {
+    if (err instanceof Error && err.name === 'TimeoutError') return `no reply from Ingram within ${Math.round(this.timeoutMs / 1000)} seconds`;
+    return err instanceof Error ? err.message : String(err);
   }
 
   /** Spaces requests out to stay under the configured requests-per-second. */
@@ -209,9 +221,9 @@ export class IngramClient {
       const started = Date.now();
       let res: Response;
       try {
-        res = await this.fetchFn(url, init);
+        res = await this.fetchFn(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = this.networkErrorMessage(err);
         this.log({ correlationId, method, path, status: null, durationMs: Date.now() - started, attempt, error: message });
         if (attempt >= this.maxAttempts) throw new IngramApiError(`Network error during sign-in: ${message}`, 0, correlationId, null);
         await this.sleep(backoffMs(attempt));

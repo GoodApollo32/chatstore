@@ -212,6 +212,34 @@ describe.skipIf(!url)('jobs against a real database', () => {
     expect(reportAsText(r)).toContain('in stock in Canada');
   });
 
+  it('shows rate limiting and a stuck update on the updates page', async () => {
+    const { createServer } = await import('../src/web/server.js');
+    const { JobRunner } = await import('../src/jobs/runner.js');
+    const server = createServer(db, new JobRunner(db, 'config/scope.json'), () => scope).listen(0);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const log = (status: number | null, minutesAgo: number, error: string | null = null) => db.query(
+      `INSERT INTO api_call_log (distributor, correlation_id, method, path, status, duration_ms, attempt, error, at)
+       VALUES ('ingram', 'c', 'GET', '/resellers/v6/catalog', $1, 10, 1, $2, now() - make_interval(mins => $3))`,
+      [status, error, minutesAgo],
+    );
+    try {
+      await log(200, 30);
+      let html = await (await fetch(`${base}/updates`)).text();
+      expect(html).toContain('No rate limiting from Ingram in the last 24 hours');
+      expect(html).not.toContain('looks stuck');
+
+      await log(429, 20, 'Rate limit quota violation. Quota limit exceeded');
+      await db.query(`INSERT INTO sync_run (distributor, job_type, trigger, started_at) VALUES ('ingram', 'catalog', 'manual', now() - interval '25 minutes')`);
+      html = await (await fetch(`${base}/updates`)).text();
+      expect(html).toContain('Ingram asked us to slow down 20 min ago');
+      expect(html).toContain('Quota limit exceeded');
+      expect(html).toContain('1 "slow down" (rate limit) replies');
+      expect(html).toContain('looks stuck');
+    } finally {
+      server.close();
+    }
+  });
+
   it('serves the search, product, updates and report pages', async () => {
     await run('catalog');
     const { createServer } = await import('../src/web/server.js');
