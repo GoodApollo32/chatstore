@@ -27,5 +27,7 @@ facts are in `docs/typebot-research.md`; the AI/rules split is ADR 0004.
   Typebot fits the page design: embedded inline in our page, it can tell the page to show matches (client-side
   script) and the page can send filters back (`Typebot.sendCommand` / `setPrefilledVariables`).
 - **Customer Price**: Chris wants "as close to MSRP as possible without going over CDW.ca's price for that part".
-  Feasibility of getting CDW prices, and the floor/fallback rules, are being worked out.
+  Scraping cdw.ca is against CDW's site terms (see `docs/competitor-pricing-research.md`). The recommended source is
+  CDW's price as listed on Google Shopping, via a paid search-data service, checked only for parts shown or quoted.
+  Pilot on ~200 part numbers first. Floor and fallback rules are pending.
 - Requirements for the other five Need Profiles; Quote Request email contents; product list fields and filters.
