@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseDetails, parsePriceAndAvailability, parseSearchPage } from '../src/ingram/parse.js';
+import { parseDetails, parsePriceAndAvailability, parseSearchPage, parseSpecs } from '../src/ingram/parse.js';
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/ingram-spec/${name}`, import.meta.url), 'utf8'));
 
@@ -105,5 +105,23 @@ describe('product details', () => {
     expect(d.longDescription).toMatch(/^Lenovo ThinkBook 15 G2/);
     expect(d.isRefurbished).toBe(false);
     expect(d.imageUrls).toEqual([]);
+  });
+});
+
+describe('specifications in other layouts', () => {
+  it('reads name/value pairs under any spelling and grouping', () => {
+    expect(parseSpecs({ technicalSpecifications: [{ HeaderName: 'Basic', AttributeName: 'RAM', AttributeValue: '16 GB' }] })).toEqual({ RAM: '16 GB' });
+    expect(parseSpecs({ specifications: [{ groupName: 'Display', attributes: [{ name: 'Screen Size', value: '14"' }] }] })).toEqual({ 'Screen Size': '14"' });
+    expect(parseSpecs({ productAttributes: [{ attribute_name: 'Ports', attribute_values: ['USB-C', 'HDMI'] }] })).toEqual({ Ports: 'USB-C, HDMI' });
+  });
+
+  it('does not mistake fees or prices for specifications', () => {
+    expect(parseSpecs({ serviceFees: [{ name: 'EHF', value: '1.75' }], pricing: { name: 'x', value: '1' } })).toEqual({});
+  });
+
+  it('reads product details wrapped in a list', () => {
+    const d = parseDetails([{ ingramPartNumber: 'X1', technicalSpecifications: [{ attributename: 'CPU', attributevalue: 'i5' }] }]);
+    expect(d.distributorSku).toBe('X1');
+    expect(d.specs).toEqual({ CPU: 'i5' });
   });
 });

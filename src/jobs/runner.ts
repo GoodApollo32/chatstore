@@ -4,6 +4,7 @@ import { IngramConnector } from '../ingram/connector.js';
 import { loadScope } from '../scope.js';
 import { runCatalogSync } from './catalogSync.js';
 import { runPriceStockRefresh } from './priceStock.js';
+import { rereadStoredData } from './reread.js';
 import { CallLogger, JobAlreadyRunningError, type JobResult, type Trigger } from './runs.js';
 
 export type JobKind = 'catalog' | 'price_stock';
@@ -25,6 +26,7 @@ export class JobRunner {
     try {
       // Re-read the scope each run so edits apply without restarting.
       const scope = loadScope(this.scopeFile);
+      await rereadStoredData(this.db, scope.warehouseCountries);
       const callLogger = new CallLogger(this.db, 'ingram');
       const connector = new IngramConnector(loadIngramConfig(), scope.warehouseCountries, { onCall: callLogger.record });
       return kind === 'catalog'

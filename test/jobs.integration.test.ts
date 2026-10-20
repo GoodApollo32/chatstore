@@ -42,6 +42,7 @@ class FakeConnector implements DistributorConnector {
   prices = new Map<string, PriceStock>();
   failOnPage: { vendor: string; page: number } | null = null;
   pagesRequested: string[] = [];
+  manufacturerNamesFor?: (term: string) => Promise<string[]>;
 
   async *catalogPages(vendor: string, startPage: number): AsyncIterable<CatalogPage> {
     const pages = this.pages[vendor] ?? [[]];
@@ -186,10 +187,60 @@ describe.skipIf(!url)('jobs against a real database', () => {
     const result = await run('catalog');
     expect(result.status).toBe('partial');
     const notes = (await db.query(`SELECT notes FROM sync_run WHERE id = $1`, [result.runId])).rows[0].notes.join(' ');
-    expect(notes).toMatch(/no products when searching for the manufacturer "Dell"/);
+    expect(notes).toMatch(/no Dell products under "Dell" or any other spelling we know/);
     expect(notes).toMatch(/may have dropped were not checked/);
     expect((await offer('D1')).listed).toBe(true);
     expect((await offer('H1')).listed).toBe(true);
+  });
+
+  it('tries the other spellings of a manufacturer when its search name finds nothing', async () => {
+    fake.pages['HP INC'] = fake.pages.HP!;
+    delete fake.pages.HP;
+    const result = await run('catalog');
+    expect(result.status).toBe('succeeded');
+    // Every other spelling is tried (a manufacturer can be split across names); each costs one request when empty.
+    const hp = fake.pagesRequested.filter((p) => p.startsWith('HP') || p.startsWith('HEWLETT'));
+    expect(hp.slice(0, 2)).toEqual(['HP:1', 'HP INC:1']);
+    expect(hp).toHaveLength(scope.manufacturers[1]!.namesUsedByDistributors.length);
+    expect((await offer('H1')).listed).toBe(true);
+    const notes = (await db.query(`SELECT notes FROM sync_run WHERE id = $1`, [result.runId])).rows[0].notes.join(' ');
+    expect(notes).toContain('2 products under "HP INC"');
+  });
+
+  it('when no spelling works, says which manufacturer names Ingram uses', async () => {
+    delete fake.pages.HP;
+    fake.manufacturerNamesFor = async () => ['HP INC - PSG', 'HP ENTERPRISE'];
+    const result = await run('catalog');
+    expect(result.status).toBe('partial');
+    expect(fake.pagesRequested.filter((p) => p.startsWith('HP') || p.startsWith('HEWLETT')).length).toBe(scope.manufacturers[1]!.namesUsedByDistributors.length);
+    const notes = (await db.query(`SELECT notes FROM sync_run WHERE id = $1`, [result.runId])).rows[0].notes.join(' ');
+    expect(notes).toContain('Ingram uses these manufacturer names: "HP INC - PSG", "HP ENTERPRISE"');
+  });
+
+  it('leaves out Lenovo French-Canadian laptops, including ones already in the catalog', async () => {
+    await run('catalog');
+    expect((await offer('A1')).listed).toBe(true);
+    fake.pages.Lenovo![0]![0] = listing('A1', { mpnRaw: '21HD003BCA' });
+    const result = await run('catalog');
+    expect((await offer('A1')).listed).toBe(false);
+    const counts = (await db.query(`SELECT counts FROM sync_run WHERE id = $1`, [result.runId])).rows[0].counts;
+    expect(counts.excluded['French-Canadian versions (Lenovo part numbers ending in CA)']).toBe(1);
+  });
+
+  it('re-reads stored responses: warehouse countries and specifications, without calling Ingram', async () => {
+    await run('catalog');
+    const a1 = await offer('A1');
+    await db.query(`UPDATE offer_stock SET location = 'MISSISSAUGA', country = NULL WHERE offer_id = $1 AND warehouse_id = '70'`, [a1.id]);
+    await db.query(
+      `UPDATE distributor_offer SET details_status = 'ok', raw_details = $2 WHERE id = $1`,
+      [a1.id, JSON.stringify([{ ingramPartNumber: 'A1', productDetailDescription: 'ThinkPad long text', technicalSpecifications: [{ HeaderName: 'Basic', AttributeName: 'RAM', AttributeValue: '16 GB' }] }])],
+    );
+    const { rereadStoredData } = await import('../src/jobs/reread.js');
+    expect(await rereadStoredData(db, scope.warehouseCountries)).toEqual({ warehouses: 1, specs: 1 });
+    expect((await db.query(`SELECT country FROM offer_stock WHERE offer_id = $1 AND warehouse_id = '70'`, [a1.id])).rows[0].country).toBe('CA');
+    const m = (await db.query(`SELECT specs, description FROM master_product WHERE id = $1`, [a1.master_product_id])).rows[0];
+    expect(m).toEqual({ specs: { RAM: '16 GB' }, description: 'ThinkPad long text' });
+    expect(await rereadStoredData(db, scope.warehouseCountries)).toEqual({ warehouses: 0, specs: 0 });
   });
 
   it('only lets one update run at a time', async () => {

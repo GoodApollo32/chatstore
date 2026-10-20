@@ -25,7 +25,18 @@ interface ResumeState {
   /** When this logical pass started; offers not seen since then are no longer listed. */
   passStartedAt: string;
   manufacturerIndex: number;
+  /** Which of the manufacturer's search names (see searchNames) is being walked. */
+  termIndex?: number;
   nextPage: number;
+}
+
+/**
+ * The names to search a manufacturer under: its search name first; only if that finds nothing, each
+ * other spelling we know for it (Ingram's manufacturer filter needs Ingram's exact spelling).
+ */
+function searchNames(m: Scope['manufacturers'][number]): string[] {
+  const names = [m.ingramSearch, ...(m.namesUsedByDistributors ?? [])];
+  return names.filter((n, i) => names.findIndex((x) => x.trim().toUpperCase() === n.trim().toUpperCase()) === i);
 }
 
 export const UNRECOGNIZED_MANUFACTURER = 'Manufacturer name not recognized';
@@ -73,25 +84,43 @@ export async function runCatalogSync(deps: {
       counts.stage = 'catalog';
       for (let m = state.manufacturerIndex; m < scope.manufacturers.length; m++) {
         const manufacturer = scope.manufacturers[m]!;
-        const startPage = m === state.manufacturerIndex ? state.nextPage : 1;
-        let found = 0;
-        for await (const page of connector.catalogPages(manufacturer.ingramSearch, startPage)) {
-          found += page.listings.length;
-          for (const listing of page.listings) {
-            counts.fetched++;
-            await processListing(db, scope, runId, listing, counts);
+        const resuming = m === state.manufacturerIndex && (state.nextPage > 1 || (state.termIndex ?? 0) > 0);
+        const names = searchNames(manufacturer);
+        const foundUnder: { name: string; count: number }[] = [];
+        for (let t = m === state.manufacturerIndex ? (state.termIndex ?? 0) : 0; t < names.length; t++) {
+          const startPage = m === state.manufacturerIndex && t === (state.termIndex ?? 0) ? state.nextPage : 1;
+          let found = 0;
+          for await (const page of connector.catalogPages(names[t]!, startPage)) {
+            found += page.listings.length;
+            for (const listing of page.listings) {
+              counts.fetched++;
+              await processListing(db, scope, runId, listing, counts);
+            }
+            Object.assign(state, { manufacturerIndex: m, termIndex: t, nextPage: page.pageNumber + 1 });
+            await saveProgress(db, runId, counts, state);
           }
-          Object.assign(state, { manufacturerIndex: m, nextPage: page.pageNumber + 1 });
-          await saveProgress(db, runId, counts, state);
+          if (found > 0) foundUnder.push({ name: names[t]!, count: found });
+          // Other spellings are only tried when the search name found nothing.
+          if (t === 0 && found > 0) break;
+          Object.assign(state, { manufacturerIndex: m, termIndex: t + 1, nextPage: 1 });
         }
-        if (startPage === 1 && found === 0) {
-          notFound.push(manufacturer.name);
+        if (foundUnder.length && foundUnder[0]!.name !== manufacturer.ingramSearch) {
           notes.push(
-            `Ingram found no products when searching for the manufacturer "${manufacturer.ingramSearch}". ` +
-            `The name probably doesn't match how Ingram spells it; the connection check shows Ingram's spelling.`,
+            `Ingram found nothing for "${manufacturer.ingramSearch}", so ${manufacturer.name} was searched under its other spellings: ` +
+            `${foundUnder.map((f) => `${f.count.toLocaleString('en-CA')} products under "${f.name}"`).join(', ')}.`,
           );
         }
-        Object.assign(state, { manufacturerIndex: m + 1, nextPage: 1 });
+        if (!resuming && foundUnder.length === 0) {
+          notFound.push(manufacturer.name);
+          const seen = await connector.manufacturerNamesFor?.(manufacturer.ingramSearch).catch(() => [] as string[]) ?? [];
+          notes.push(
+            `Ingram found no ${manufacturer.name} products under "${manufacturer.ingramSearch}" or any other spelling we know. ` +
+            (seen.length
+              ? `A general search for "${manufacturer.ingramSearch}" shows Ingram uses these manufacturer names: ${seen.slice(0, 8).map((n) => `"${n}"`).join(', ')}. Add the right one to that manufacturer's names in the scope settings.`
+              : 'A general search found nothing either.'),
+          );
+        }
+        Object.assign(state, { manufacturerIndex: m + 1, termIndex: 0, nextPage: 1 });
         await saveProgress(db, runId, counts, state);
       }
 
@@ -165,8 +194,17 @@ async function recordExcluded(db: Db, runId: number, l: CatalogListing, reason: 
 async function processListing(db: Db, scope: Scope, runId: number, l: CatalogListing, counts: CatalogCounts): Promise<void> {
   const manufacturer = scope.manufacturerFor(l.manufacturerRaw);
   if (!manufacturer) return recordExcluded(db, runId, l, UNRECOGNIZED_MANUFACTURER, counts);
-  const classification = scope.classify({ category: l.distributorCategory, subCategory: l.distributorSubcategory, description: l.title });
-  if (!classification.inScope) return recordExcluded(db, runId, l, classification.reason, counts);
+  const classification = scope.classify({
+    category: l.distributorCategory, subCategory: l.distributorSubcategory, description: l.title, manufacturer, mpn: l.mpnRaw,
+  });
+  if (!classification.inScope) {
+    // A product we had before that the rules now leave out (e.g. after a scope edit) drops out of search.
+    await db.query(
+      `UPDATE distributor_offer SET listed = false, updated_at = now() WHERE distributor = $1 AND distributor_sku = $2 AND listed`,
+      [l.distributor, l.distributorSku],
+    );
+    return recordExcluded(db, runId, l, classification.reason, counts);
+  }
 
   // Compared inside PostgreSQL: stored JSON comes back with its keys reordered.
   const existing = await db.query<{ id: number; changed: boolean }>(

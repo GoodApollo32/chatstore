@@ -2,6 +2,7 @@ import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { createPool } from './db/pool.js';
 import { JobRunner } from './jobs/runner.js';
+import { rereadStoredData } from './jobs/reread.js';
 import { markAbandonedRuns } from './jobs/runs.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { buildReport, reportAsText } from './report/dataQuality.js';
@@ -38,8 +39,12 @@ async function main(): Promise<number> {
       await db.end();
       return 0;
     case 'serve': {
-      loadScope(config.scopeFile); // fail fast on a broken scope file
+      const scope = loadScope(config.scopeFile); // fail fast on a broken scope file
       await markAbandonedRuns(db);
+      const reread = await rereadStoredData(db, scope.warehouseCountries);
+      if (reread.warehouses || reread.specs) {
+        console.log(`Re-read stored data: ${reread.warehouses} warehouse stock rows re-sorted by country, ${reread.specs} products given specifications.`);
+      }
       const runner = new JobRunner(db, config.scopeFile);
       startScheduler(config.schedule, runner);
       if (!config.schedule.enabled) console.log('Automatic schedule is OFF; use the Updates page to refresh.');

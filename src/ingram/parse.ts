@@ -125,21 +125,40 @@ function parseStock(availability: any, overrides: Record<string, Country>): Ware
     });
 }
 
+const NAME_KEY = /^(attribute|spec(ification)?)?_?(name|label)$/i;
+const VALUE_KEY = /^(attribute|spec(ification)?)?_?values?$/i;
+const HEADER_KEY = /^(header|group|section)_?name$/i;
+
 /**
  * Specs as name → value. The spec documents no attribute field on price & availability even
- * though includeProductAttributes exists, so accept the shapes Ingram uses elsewhere.
+ * though includeProductAttributes exists, and Canada's responses may not match the US examples,
+ * so this looks anywhere in the response (a few levels deep) for lists of name/value pairs, under
+ * any spelling of the keys (attributeName, attributename, AttributeName, name, ...).
  */
 export function parseSpecs(item: any): Record<string, string> {
   const specs: Record<string, string> = {};
-  const lists = [item?.productAttributes, item?.attributes, item?.technicalSpecifications, item?.productAttributes?.attributes];
-  for (const list of lists) {
-    if (!Array.isArray(list)) continue;
-    for (const a of list) {
-      const name = str(a?.attributeName ?? a?.attributename ?? a?.name);
-      const value = str(a?.attributeValue ?? a?.attributevalue ?? a?.value);
+  const walk = (node: any, depth: number) => {
+    if (depth > 5 || node == null || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const el of node) walk(el, depth + 1);
+      return;
+    }
+    const keys = Object.keys(node);
+    const nameKey = keys.find((k) => NAME_KEY.test(k) && !HEADER_KEY.test(k));
+    const valueKey = keys.find((k) => VALUE_KEY.test(k));
+    if (nameKey && valueKey) {
+      const name = str(node[nameKey]);
+      const raw = node[valueKey];
+      const value = Array.isArray(raw) ? raw.map(str).filter(Boolean).join(', ') : typeof raw === 'object' ? null : str(raw);
       if (name && value && !(name in specs)) specs[name] = value;
     }
-  }
+    for (const k of keys) {
+      // Price, stock and fee lists carry name-like fields too (e.g. fee descriptions); they aren't specs.
+      if (/^(pricing|availability|serviceFees|discounts|links|indicators|ciscoFields)$/i.test(k)) continue;
+      if (typeof node[k] === 'object') walk(node[k], depth + 1);
+    }
+  };
+  walk(item, 0);
   return specs;
 }
 
@@ -172,7 +191,9 @@ export function parsePriceAndAvailability(body: any, overrides: Record<string, C
   });
 }
 
-export function parseDetails(body: any): ProductDetails {
+export function parseDetails(response: any): ProductDetails {
+  // Accept the product wrapped in a one-item list or an envelope.
+  const body = Array.isArray(response) ? response[0] : response?.productDetails ?? response?.product ?? response;
   const images: string[] = [];
   for (const key of ['images', 'productImages', 'imageUrls']) {
     for (const i of Array.isArray(body?.[key]) ? body[key] : []) {
@@ -186,6 +207,6 @@ export function parseDetails(body: any): ProductDetails {
     specs: parseSpecs(body),
     imageUrls: images,
     isRefurbished: bool(body?.indicators?.isRefurbished),
-    raw: body,
+    raw: response,
   };
 }

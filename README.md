@@ -90,10 +90,12 @@ Double-click **Stop Catalog**. Your data is kept. Docker Desktop must be running
 ## Changing what gets pulled
 
 The file `config\scope.json` (open with Notepad) lists:
-- **manufacturers**: what to search Ingram for, plus the names Ingram uses for each manufacturer. If the report lists
-  "Manufacturer names we didn't recognise" and one of them is really Lenovo, HP or Dell, add it here.
+- **manufacturers**: what to search Ingram for, plus the names Ingram uses for each manufacturer. If the search name
+  finds nothing, the pull tries each of the other names automatically. If the report lists "Manufacturer names we
+  didn't recognise" and one of them is really Lenovo, HP or Dell, add it here.
 - **rules**: how Ingram's categories become ours (Laptops, Desktops, Monitors, Docking Stations), and what to leave
-  out (refurbished, tablets, parts, bags, warranties). Rules are checked top to bottom; the first match wins.
+  out (refurbished, tablets, parts, bags, warranties, and Lenovo laptops/desktops whose part number ends in "CA",
+  the French-Canadian versions). Rules are checked top to bottom; the first match wins.
 - **warehouseCountries**: lets us state which warehouses are Canadian once we know Ingram's warehouse codes.
 
 Changes apply on the next catalog pull. No restart is needed. If you're unsure about an edit, ask before saving.

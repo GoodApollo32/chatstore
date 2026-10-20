@@ -41,6 +41,13 @@ export class IngramConnector implements DistributorConnector {
     }
   }
 
+  async manufacturerNamesFor(term: string): Promise<string[]> {
+    const { page } = await this.keywordSearchPage(term, 1, SEARCH_PAGE_SIZE);
+    const counts = new Map<string, number>();
+    for (const l of page.listings) if (l.manufacturerRaw) counts.set(l.manufacturerRaw, (counts.get(l.manufacturerRaw) ?? 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+  }
+
   async *catalogPages(vendor: string, startPage: number): AsyncIterable<CatalogPage> {
     for (let pageNumber = startPage; pageNumber < startPage + MAX_PAGES; pageNumber++) {
       const { page } = await this.searchPage(vendor, pageNumber);

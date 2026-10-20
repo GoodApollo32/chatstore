@@ -66,3 +66,27 @@ describe('scope: validation', () => {
     expect(() => parseScope({ ...base, rules: [], warehouseCountries: { '10': 'MX' } })).toThrow(/CA" or "US/);
   });
 });
+
+describe('scope: French-Canadian Lenovo versions', () => {
+  const lenovo = (subCategory: string, mpn: string, manufacturer = 'Lenovo') =>
+    scope.classify({ category: 'Computers', subCategory, description: 'THINKPAD', manufacturer, mpn });
+
+  it('leaves out Lenovo laptops and desktops whose part number ends in CA', () => {
+    const reason = 'French-Canadian versions (Lenovo part numbers ending in CA)';
+    expect(lenovo('Notebooks', '21HD003BCA')).toEqual({ inScope: false, reason });
+    expect(lenovo('Desktops', '12E3000ACA')).toEqual({ inScope: false, reason });
+  });
+
+  it('keeps the English versions, other categories and other manufacturers', () => {
+    expect(lenovo('Notebooks', '21HD003BUS')).toEqual({ inScope: true, category: 'Laptops' });
+    expect(lenovo('Monitors', '63B4MAR6CA')).toEqual({ inScope: true, category: 'Monitors' });
+    expect(lenovo('Notebooks', 'ABC123CA', 'HP')).toEqual({ inScope: true, category: 'Laptops' });
+  });
+
+  it('refuses a category rule that names an unknown category or manufacturer', () => {
+    const base = { manufacturers: [{ name: 'Lenovo', ingramSearch: 'Lenovo', namesUsedByDistributors: [] }], categories: ['Laptops'] };
+    expect(() => parseScope({ ...base, rules: [{ exclude: 'x', mpn: 'CA$', ourCategory: ['Tablets'] }] })).toThrow(/Tablets/);
+    expect(() => parseScope({ ...base, rules: [{ exclude: 'x', mpn: 'CA$', manufacturer: 'Lenvo' }] })).toThrow(/Lenvo/);
+    expect(() => parseScope({ ...base, rules: [{ putIn: 'Laptops', mpn: 'CA$', ourCategory: ['Laptops'] }] })).toThrow(/only works with "exclude"/);
+  });
+});

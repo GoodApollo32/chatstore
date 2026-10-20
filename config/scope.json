@@ -10,7 +10,7 @@
     {
       "name": "HP",
       "ingramSearch": "HP",
-      "namesUsedByDistributors": ["HP", "HP INC", "HP INC.", "HP CANADA", "HP INC CANADA", "HEWLETT PACKARD", "HEWLETT-PACKARD", "HP COMMERCIAL"]
+      "namesUsedByDistributors": ["HP", "HP INC", "HP INC.", "HP CANADA", "HP INC CANADA", "HP CANADA CO", "HP PS", "HP PSG", "HP PERSONAL SYSTEMS", "HP INC - PS", "HEWLETT PACKARD", "HEWLETT-PACKARD", "HEWLETT PACKARD INC", "HP COMMERCIAL"]
     },
     {
       "name": "Dell",
@@ -21,7 +21,7 @@
 
   "categories": ["Laptops", "Desktops", "Monitors", "Docking Stations"],
 
-  "_rulesReadme": "Rules are checked top to bottom; the first match wins. Each rule can test the distributor's category ('distributorCategory'), sub-category ('distributorSubCategory') and/or product description ('description', or 'notDescription' for must-not-contain) (patterns, not case sensitive). A rule either puts the product in one of our categories ('putIn') or leaves it out ('exclude', with the reason shown in the data-quality report). Products no rule matches are left out as 'Not in version-one categories'. These are starting guesses: check the translation table in the data-quality report after each pull.",
+  "_rulesReadme": "Rules are checked top to bottom; the first match wins. Each rule can test the distributor's category ('distributorCategory'), sub-category ('distributorSubCategory') and/or product description ('description', or 'notDescription' for must-not-contain) (patterns, not case sensitive). A rule either puts the product in one of our categories ('putIn') or leaves it out ('exclude', with the reason shown in the data-quality report). Rules can also test our manufacturer name ('manufacturer', exact) and the manufacturer part number ('mpn', pattern). An 'exclude' rule with 'ourCategory' (a list of our categories) is checked after the category is decided, e.g. to drop Lenovo French-Canadian laptops and desktops. Products no rule matches are left out as 'Not in version-one categories'. These are starting guesses: check the translation table in the data-quality report after each pull.",
 
   "rules": [
     { "exclude": "Refurbished or open box", "description": "REFURB|RENEWED|RECERTIFIED|OPEN[ -]?BOX" },
@@ -43,7 +43,9 @@
     { "putIn": "Desktops", "distributorSubCategory": "DESKTOP|ALL[ -]?IN[ -]?ONE|\\bAIO\\b|MINI PC|THIN CLIENT|WORKSTATION|TOWER|SMALL FORM" },
     { "putIn": "Monitors", "distributorSubCategory": "MONITOR|DISPLAY|LCD|LED" },
 
-    { "putIn": "Docking Stations", "description": "DOCKING STATION|\\bDOCK\\b|PORT REPLICATOR" }
+    { "putIn": "Docking Stations", "description": "DOCKING STATION|\\bDOCK\\b|PORT REPLICATOR" },
+
+    { "exclude": "French-Canadian versions (Lenovo part numbers ending in CA)", "manufacturer": "Lenovo", "mpn": "CA$", "ourCategory": ["Laptops", "Desktops"] }
   ],
 
   "warehouseCountries": {

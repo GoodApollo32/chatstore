@@ -10,6 +10,8 @@ export interface DataQualityReport {
   byManufacturerCategory: { manufacturer: string; category: string; count: number }[];
   hidden: { discontinued: number; notAuthorized: number; refurbished: number; noLongerListed: number };
   completeness: { field: string; have: number; of: number }[];
+  /** Shown products for which Ingram's product-details call answered (specs may still be missing). */
+  detailsFetched: number;
   pricing: {
     priced: number; neverPriced: number; withPriceError: number; stale: number;
     currencies: { currency: string; count: number }[];
@@ -65,7 +67,8 @@ export async function buildReport(db: Db): Promise<DataQualityReport> {
            count(*) FILTER (WHERE o.upc IS NOT NULL)::int AS upc,
            count(*) FILTER (WHERE m.specs <> '{}'::jsonb)::int AS specs,
            count(*) FILTER (WHERE jsonb_array_length(m.image_urls) > 0)::int AS images,
-           count(*) FILTER (WHERE m.description IS NOT NULL)::int AS description
+           count(*) FILTER (WHERE m.description IS NOT NULL)::int AS description,
+           count(*) FILTER (WHERE o.details_status = 'ok')::int AS details
     FROM distributor_offer o LEFT JOIN master_product m ON m.id = o.master_product_id
     WHERE ${SHOWN}`);
   const completeness = [
@@ -147,6 +150,7 @@ export async function buildReport(db: Db): Promise<DataQualityReport> {
     byManufacturerCategory,
     hidden,
     completeness,
+    detailsFetched: c.details!,
     pricing: {
       priced: p.priced!, neverPriced: p.neverPriced!, withPriceError: p.withPriceError!, stale: p.stale!,
       currencies, withMsrp: p.withMsrp!, withEhf: p.withEhf!, withQuantityBreaks: p.withQuantityBreaks!,
@@ -178,8 +182,16 @@ export function findings(r: DataQualityReport): string[] {
   if (r.pricing.neverPriced) out.push(`${r.pricing.neverPriced} products have never had a price check.`);
   if (r.pricing.withPriceError) out.push(`${r.pricing.withPriceError} products failed their latest price check (last good price kept).`);
   const unknownWarehouses = r.stock.warehouses.filter((w) => !w.country);
-  if (unknownWarehouses.length) out.push(`${unknownWarehouses.length} warehouses couldn't be identified as Canadian or US; their stock doesn't count as In Stock until they are.`);
+  if (unknownWarehouses.length) {
+    out.push(
+      `${unknownWarehouses.length} warehouses couldn't be identified as Canadian or US, so their stock doesn't count as In Stock: ` +
+      `${unknownWarehouses.map((w) => `${w.warehouseId} (${w.location ?? 'no location given'})`).join(', ')}. Tell us which are Canadian and we'll add them to the scope settings.`,
+    );
+  }
   const specs = r.completeness.find((c) => c.field === 'Specifications')!;
+  if (r.detailsFetched > specs.have) {
+    out.push(`Ingram answered the product-details request for ${r.detailsFetched} products, but specifications could be read for only ${specs.have}. The stored replies can be re-read once we see how Ingram lays them out.`);
+  }
   if (shown && specs.have / shown < 0.5) out.push(`Only ${pct(specs.have, shown)} of products have specifications. Searching by RAM, CPU or screen size will need another source (e.g. a content provider).`);
   const images = r.completeness.find((c) => c.field === 'Images')!;
   if (shown && images.have === 0) out.push('No products have images. Ingram\'s API doesn\'t supply them; a content provider will be needed for the storefront.');

@@ -102,6 +102,8 @@ export interface DistributorConnector {
   priceAndStock(skus: string[], opts?: { includeSpecs?: boolean }): Promise<PriceStock[]>;
   /** Product details where the distributor offers them; throws DetailsUnavailableError otherwise. */
   details?(sku: string): Promise<ProductDetails>;
+  /** Manufacturer names the distributor uses for products matching a free-text search (to fix a search name). */
+  manufacturerNamesFor?(term: string): Promise<string[]>;
 }
 
 export class DetailsUnavailableError extends Error {}
