@@ -48,6 +48,7 @@ export function page(title: string, body: string): string {
   .tag.warn { background:var(--warnbg); color:var(--warn); } .tag.bad { background:#fdecea; color:var(--bad); } .tag.good { background:#e7f5ec; color:var(--good); }
   form.filters { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
   form.filters label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:2px; }
+  form.filters .break { flex-basis:100%; height:0; }
   input, select, button { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
   button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
   button.secondary { background:#fff; color:var(--accent); }
@@ -61,3 +62,33 @@ export function page(title: string, body: string): string {
 <a href="/">Search</a><a href="/updates">Updates</a><a href="/report">Data-quality report</a></header>
 <main>${body}</main></body></html>`;
 }
+
+/** One line of key specs, e.g. "Core i5 (i5-1335U) · 16 GB memory · 512 GB SSD · 14" WUXGA · Windows 11 Pro". */
+export function factsLine(f: Record<string, any> | null | undefined): string {
+  if (!f) return '';
+  const size = (gb: number) => (gb >= 1024 ? `${+(gb / 1024).toFixed(1)} TB` : `${gb} GB`);
+  const parts = [
+    f.processorLine ? `${f.processorLine}${f.processorModel ? ` (${f.processorModel})` : ''}` : null,
+    f.memoryGb ? `${f.memoryGb} GB memory` : null,
+    f.storageGb ? `${size(f.storageGb)} ${f.storageType ?? 'storage'}` : null,
+    f.screenInches ? `${f.screenInches}"${f.resolution ? ` ${f.resolution}` : ''}` : f.resolution ?? null,
+    f.refreshHz ? `${f.refreshHz} Hz` : null,
+    f.panel ?? null,
+    f.usbC ? 'USB-C' : null,
+    f.graphics ?? null,
+    f.formFactor ?? null,
+    f.dockConnection ?? null,
+    f.powerW ? `${f.powerW} W` : null,
+    f.os ?? null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+/** Plain-language names for the key-spec fields, for the product page. */
+export const FACT_LABELS: Record<string, string> = {
+  processorLine: 'Processor', processorModel: 'Processor model', processorTier: 'Processor level', memoryGb: 'Memory (GB)',
+  storageGb: 'Storage (GB)', storageType: 'Storage type', screenInches: 'Screen size (inches)', resolution: 'Resolution',
+  os: 'Operating system', graphics: 'Graphics', dedicatedGraphics: 'Dedicated graphics', formFactor: 'Form factor',
+  refreshHz: 'Refresh rate (Hz)', panel: 'Panel', usbC: 'USB-C', dockConnection: 'Connection', powerW: 'Power (W)', processorBrand: 'Processor maker',
+};
+

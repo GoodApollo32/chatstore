@@ -3,7 +3,7 @@ import type { Db } from '../db/pool.js';
 import type { JobRunner } from '../jobs/runner.js';
 import { buildReport, findings, SHOWN, STALE_HOURS, type DataQualityReport } from '../report/dataQuality.js';
 import type { Scope } from '../scope.js';
-import { ago, esc, money, page, when } from './html.js';
+import { ago, esc, FACT_LABELS, factsLine, money, page, when } from './html.js';
 
 // The internal search page. Shows raw cost, so it must never be reachable by customers: Docker
 // publishes it on this PC only, and Microsoft sign-in is added before anyone else uses it.
@@ -86,12 +86,25 @@ async function searchPage(db: Db, scope: Scope, q: Record<string, string>): Prom
   if (q.inStock === 'on') where.push(`ca.qty > 0`);
   if (q.minCost && Number.isFinite(Number(q.minCost))) where.push(`o.cost >= ${param(Number(q.minCost))}`);
   if (q.maxCost && Number.isFinite(Number(q.maxCost))) where.push(`o.cost <= ${param(Number(q.maxCost))}`);
+  // Key specs read from titles (see titleFacts). A product whose title doesn't state a spec drops out when filtering on it.
+  const atLeast = (key: string, v: string | undefined) => {
+    if (v && Number.isFinite(Number(v))) where.push(`(m.facts->>'${key}')::numeric >= ${param(Number(v))}`);
+  };
+  atLeast('processorTier', q.cpu);
+  atLeast('memoryGb', q.memory);
+  atLeast('storageGb', q.storage);
+  const screen = SCREEN_RANGES.find((r) => r.value === q.screen);
+  if (screen) where.push(`(m.facts->>'screenInches')::numeric BETWEEN ${param(screen.from)} AND ${param(screen.to)}`);
+  if (q.os) where.push(`m.facts->>'os' = ${param(q.os)}`);
+  if (q.formFactor) where.push(`m.facts->>'formFactor' = ${param(q.formFactor)}`);
+  if (q.gpu === 'on') where.push(`(m.facts->>'dedicatedGraphics')::boolean`);
+  if (q.usbc === 'on') where.push(`(m.facts->>'usbC' = 'true' OR m.facts->>'dockConnection' IN ('USB-C', 'USB4', 'Thunderbolt', 'Thunderbolt 3', 'Thunderbolt 4', 'Thunderbolt 5'))`);
   const pageNo = Math.max(1, Number(q.page) || 1);
   const sort = q.sort === 'cost' ? 'o.cost ASC NULLS LAST' : q.sort === 'cost-desc' ? 'o.cost DESC NULLS LAST'
     : q.sort === 'stock' ? 'ca.qty DESC, o.title' : 'm.manufacturer, o.category, o.title';
 
   const sql = `
-    SELECT o.id, m.manufacturer, o.mpn_raw, o.title, o.category, o.distributor_sku, o.cost, o.ehf, o.msrp, o.currency,
+    SELECT o.id, m.manufacturer, m.facts, o.mpn_raw, o.title, o.category, o.distributor_sku, o.cost, o.ehf, o.msrp, o.currency,
            o.quantity_breaks, o.special_pricing, o.price_stock_refreshed_at, o.price_stock_error,
            o.discontinued, o.authorized_to_purchase, o.refurbished, o.master_product_id,
            ca.qty AS ca_qty, us.qty AS us_qty, count(*) OVER () AS total
@@ -116,6 +129,15 @@ async function searchPage(db: Db, scope: Scope, q: Record<string, string>): Prom
       <label>to<input name="maxCost" value="${esc(q.maxCost ?? '')}" size="7" inputmode="decimal"></label>
       <label>Sort<select name="sort">${opt('', 'Manufacturer', q.sort)}${opt('cost', 'Cost: low to high', q.sort)}${opt('cost-desc', 'Cost: high to low', q.sort)}${opt('stock', 'Most Canadian stock', q.sort)}</select></label>
       <label><span><input type="checkbox" name="inStock" ${q.inStock === 'on' ? 'checked' : ''}> In stock in Canada</span></label>
+      <div class="break"></div>
+      <label>Processor<select name="cpu">${opt('', 'Any', q.cpu)}${opt('3', 'Core i3 / Ryzen 3 or better', q.cpu)}${opt('5', 'Core i5 / Ultra 5 / Ryzen 5 or better', q.cpu)}${opt('7', 'Core i7 / Ultra 7 / Ryzen 7 or better', q.cpu)}${opt('9', 'Core i9 / Ultra 9 / Ryzen 9', q.cpu)}</select></label>
+      <label>Memory<select name="memory">${opt('', 'Any', q.memory)}${['8', '16', '32', '64'].map((v) => opt(v, `${v} GB or more`, q.memory)).join('')}</select></label>
+      <label>Storage<select name="storage">${opt('', 'Any', q.storage)}${opt('256', '256 GB or more', q.storage)}${opt('512', '512 GB or more', q.storage)}${opt('1024', '1 TB or more', q.storage)}${opt('2048', '2 TB or more', q.storage)}</select></label>
+      <label>Screen<select name="screen">${opt('', 'Any', q.screen)}${SCREEN_RANGES.map((r) => opt(r.value, r.label, q.screen)).join('')}</select></label>
+      <label>Operating system<select name="os">${opt('', 'Any', q.os)}${['Windows 11 Pro', 'Windows 11 Home', 'ChromeOS', 'No OS'].map((v) => opt(v, v, q.os)).join('')}</select></label>
+      <label>Desktop type<select name="formFactor">${opt('', 'Any', q.formFactor)}${['Tower', 'Small form factor', 'Mini', 'All-in-one'].map((v) => opt(v, v, q.formFactor)).join('')}</select></label>
+      <label><span><input type="checkbox" name="gpu" ${q.gpu === 'on' ? 'checked' : ''}> Dedicated graphics</span></label>
+      <label><span><input type="checkbox" name="usbc" ${q.usbc === 'on' ? 'checked' : ''}> USB-C / Thunderbolt</span></label>
       <label><span><input type="checkbox" name="showHidden" ${q.showHidden === 'on' ? 'checked' : ''}> Include discontinued / restricted</span></label>
       <button type="submit">Search</button> <a href="/" class="small">clear</a>
     </form>`;
@@ -133,7 +155,7 @@ async function searchPage(db: Db, scope: Scope, q: Record<string, string>): Prom
     return `<tr>
       <td>${esc(r.manufacturer ?? '–')}</td>
       <td><a href="/product/${r.id}">${esc(r.mpn_raw ?? '–')}</a><div class="small muted">Ingram ${esc(r.distributor_sku)}</div></td>
-      <td>${esc(r.title)}<div>${tags.join('')}</div></td>
+      <td>${esc(r.title)}${factsLine(r.facts) ? `<div class="small muted">${esc(factsLine(r.facts))}</div>` : ''}<div>${tags.join('')}</div></td>
       <td>${esc(r.category)}</td>
       <td class="num">${money(r.cost, r.currency)}${r.ehf != null ? `<div class="small muted">+ EHF ${money(r.ehf)}</div>` : ''}${breaks ? `<div class="small muted">${breaks}</div>` : ''}</td>
       <td class="num">${money(r.msrp, r.currency)}</td>
@@ -157,10 +179,20 @@ async function searchPage(db: Db, scope: Scope, q: Record<string, string>): Prom
     </table></div>${pager}`);
 }
 
+const SCREEN_RANGES = [
+  { value: 'lt13', label: 'Under 13" (laptops)', from: 0, to: 12.9 },
+  { value: '13-14', label: '13–14" (laptops)', from: 13, to: 14.5 },
+  { value: '15-16', label: '15–16" (laptops)', from: 15, to: 16.4 },
+  { value: '17up', label: '17" and up (laptops)', from: 16.5, to: 18.9 },
+  { value: '19-24', label: '19–24" (monitors, all-in-ones)', from: 19, to: 24.9 },
+  { value: '25-29', label: '25–29" (monitors)', from: 25, to: 29.9 },
+  { value: '30up', label: '30" and up (monitors)', from: 30, to: 99 },
+];
+
 async function productPage(db: Db, id: number): Promise<string | null> {
   if (!Number.isInteger(id)) return null;
   const { rows } = await db.query(
-    `SELECT o.*, m.manufacturer, m.specs, m.image_urls, m.description AS long_description, m.mpn_normalized
+    `SELECT o.*, m.manufacturer, m.specs, m.facts, m.fact_sources, m.image_urls, m.description AS long_description, m.mpn_normalized
      FROM distributor_offer o LEFT JOIN master_product m ON m.id = o.master_product_id WHERE o.id = $1`,
     [id],
   );
@@ -173,6 +205,7 @@ async function productPage(db: Db, id: number): Promise<string | null> {
 
   const kv = (pairs: [string, string][]) => `<dl class="kv">${pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
   const specs = Object.entries(o.specs ?? {}) as [string, string][];
+  const keySpecs = Object.entries(o.facts ?? {}).filter(([k]) => k !== 'processorTier' && k !== 'processorBrand');
   const countryLabel = (c: string | null) => (c === 'CA' ? 'Canada' : c === 'US' ? 'United States' : '<span class="tag warn">unknown</span>');
 
   return page(o.title, `
@@ -209,8 +242,12 @@ async function productPage(db: Db, id: number): Promise<string | null> {
         <td class="small">${(w.backorder_etas ?? []).map((e: any) => `${e.quantity} on ${esc(e.etaDate)}`).join('<br>')}</td></tr>`).join('')
         || '<tr><td colspan="7" class="muted">No stock information yet.</td></tr>'}
     </table></div>
-    <h2>Specifications</h2>
-    <div class="card">${specs.length ? kv(specs.map(([k, v]) => [k, esc(v)])) : '<span class="muted">None supplied by Ingram.</span>'}
+    <h2>Key specs</h2>
+    <div class="card">${keySpecs.length
+      ? kv(keySpecs.map(([k, v]) => [FACT_LABELS[k] ?? k, `${esc(typeof v === 'boolean' ? (v ? 'yes' : 'no') : v)} <span class="small muted">(${esc(SOURCE_LABELS[o.fact_sources?.[k]] ?? o.fact_sources?.[k] ?? '')})</span>`]))
+      : '<span class="muted">None could be read from the title.</span>'}</div>
+    <h2>Full specifications</h2>
+    <div class="card">${specs.length ? kv(specs.map(([k, v]) => [k, esc(v)])) : '<span class="muted">None yet. Ingram Canada doesn\'t supply them; Icecat will.</span>'}
       ${o.long_description ? `<p>${esc(o.long_description)}</p>` : ''}</div>
     <h2>Raw data from Ingram</h2>
     <details class="card"><summary>Catalog search</summary><pre>${esc(JSON.stringify(o.raw_search, null, 2))}</pre></details>
@@ -218,6 +255,8 @@ async function productPage(db: Db, id: number): Promise<string | null> {
     ${o.raw_details ? `<details class="card"><summary>Product details</summary><pre>${esc(JSON.stringify(o.raw_details, null, 2))}</pre></details>` : ''}
   `);
 }
+
+const SOURCE_LABELS: Record<string, string> = { title: "read from Ingram's product title", icecat: 'from Icecat' };
 
 const JOB_LABEL: Record<string, string> = { catalog: 'Full catalog pull', price_stock: 'Price & stock refresh' };
 const STATUS_TAG: Record<string, string> = {
@@ -339,6 +378,19 @@ function reportPage(r: DataQualityReport): string {
 
     <h2>What the products come with</h2>
     ${table(['Information', 'Products that have it', 'Share'], r.completeness.map((x) => [x.field, `${x.have} of ${x.of}`, pct(x.have, x.of)]), [1, 2])}
+
+    <h2>Searchable key specs</h2>
+    <p class="small muted">Read from Ingram's product titles (Ingram Canada sends no specifications). A product whose title doesn't state a spec
+      can't be found by that spec in search or by the storefront.</p>
+    ${table(['Category', 'Products', 'Processor', 'Memory', 'Storage', 'All three', 'Screen size', 'Operating system', 'Desktop type', 'Dock connection'],
+      r.keySpecs.map((k) => {
+        const share = (n: number, applies: boolean) => (applies ? `${pct(n, k.products)}` : '–');
+        const computer = k.category === 'Laptops' || k.category === 'Desktops';
+        return [k.category, k.products, share(k.processor, computer), share(k.memory, computer), share(k.storage, computer), share(k.allThree, computer),
+          share(k.screen, k.category !== 'Docking Stations'), share(k.os, computer), share(k.formFactor, k.category === 'Desktops'), share(k.dockConnection, k.category === 'Docking Stations')];
+      }), [1, 2, 3, 4, 5, 6, 7, 8, 9])}
+    ${r.unreadTitles.length ? `<details class="card"><summary>Examples of laptop and desktop titles missing processor, memory or storage (${r.unreadTitles.length})</summary>
+      ${table(['Manufacturer', 'Category', 'Title'], r.unreadTitles.map((u) => [u.manufacturer, u.category, u.title]))}</details>` : ''}
 
     <h2>Prices</h2>
     ${table(['', 'Products'], [

@@ -12,6 +12,13 @@ export interface DataQualityReport {
   completeness: { field: string; have: number; of: number }[];
   /** Shown products for which Ingram's product-details call answered (specs may still be missing). */
   detailsFetched: number;
+  /** Per category: how many shown products have each searchable key spec (read from titles, later Icecat). */
+  keySpecs: {
+    category: string; products: number; processor: number; memory: number; storage: number; allThree: number;
+    screen: number; os: number; formFactor: number; dockConnection: number;
+  }[];
+  /** Example laptop/desktop titles missing processor, memory or storage, to improve the title reading. */
+  unreadTitles: { category: string; manufacturer: string; title: string }[];
   pricing: {
     priced: number; neverPriced: number; withPriceError: number; stale: number;
     currencies: { currency: string; count: number }[];
@@ -79,6 +86,24 @@ export async function buildReport(db: Db): Promise<DataQualityReport> {
     { field: 'Images', have: c.images!, of: c.total! },
     { field: 'Long description', have: c.description!, of: c.total! },
   ];
+
+  const keySpecs = await many<DataQualityReport['keySpecs'][number]>(db, `
+    SELECT o.category, count(*)::int AS products,
+           count(*) FILTER (WHERE m.facts ? 'processorTier')::int AS processor,
+           count(*) FILTER (WHERE m.facts ? 'memoryGb')::int AS memory,
+           count(*) FILTER (WHERE m.facts ? 'storageGb')::int AS storage,
+           count(*) FILTER (WHERE m.facts ?& array['processorTier', 'memoryGb', 'storageGb'])::int AS "allThree",
+           count(*) FILTER (WHERE m.facts ? 'screenInches')::int AS screen,
+           count(*) FILTER (WHERE m.facts ? 'os')::int AS os,
+           count(*) FILTER (WHERE m.facts ? 'formFactor')::int AS "formFactor",
+           count(*) FILTER (WHERE m.facts ? 'dockConnection')::int AS "dockConnection"
+    FROM distributor_offer o JOIN master_product m ON m.id = o.master_product_id
+    WHERE ${SHOWN} GROUP BY o.category ORDER BY o.category`);
+  const unreadTitles = await many<DataQualityReport['unreadTitles'][number]>(db, `
+    SELECT o.category, m.manufacturer, o.title
+    FROM distributor_offer o JOIN master_product m ON m.id = o.master_product_id
+    WHERE ${SHOWN} AND o.category IN ('Laptops', 'Desktops') AND NOT (m.facts ?& array['processorTier', 'memoryGb', 'storageGb'])
+    ORDER BY m.manufacturer, o.category, o.id LIMIT 30`);
 
   const p = await one<Record<string, number>>(db, `
     SELECT count(*) FILTER (WHERE price_stock_refreshed_at IS NOT NULL)::int AS priced,
@@ -152,6 +177,8 @@ export async function buildReport(db: Db): Promise<DataQualityReport> {
     hidden,
     completeness,
     detailsFetched: c.details!,
+    keySpecs,
+    unreadTitles,
     pricing: {
       priced: p.priced!, neverPriced: p.neverPriced!, withPriceError: p.withPriceError!, stale: p.stale!,
       currencies, withMsrp: p.withMsrp!, withEhf: p.withEhf!, withQuantityBreaks: p.withQuantityBreaks!,
@@ -189,6 +216,12 @@ export function findings(r: DataQualityReport): string[] {
       `${unknownWarehouses.map((w) => `${w.warehouseId} (${w.location ?? 'no location given'})`).join(', ')}. Tell us which are Canadian and we'll add them to the scope settings.`,
     );
   }
+  const computers = r.keySpecs.filter((k) => k.category === 'Laptops' || k.category === 'Desktops');
+  const computerCount = computers.reduce((a, k) => a + k.products, 0);
+  const readable = computers.reduce((a, k) => a + k.allThree, 0);
+  if (computerCount && readable / computerCount < 0.9) {
+    out.push(`Processor, memory and storage could be read from the title for ${pct(readable, computerCount)} of laptops and desktops (${readable} of ${computerCount}). The rest can't be found by those specs until Icecat or better title reading fills them in; examples are listed under "Searchable key specs".`);
+  }
   const specs = r.completeness.find((c) => c.field === 'Specifications')!;
   if (r.detailsFetched > specs.have) {
     out.push(`Ingram answered the product-details request for ${r.detailsFetched} products, but specifications could be read for only ${specs.have}. The stored replies can be re-read once we see how Ingram lays them out.`);
@@ -214,6 +247,11 @@ export function reportAsText(r: DataQualityReport): string {
   add();
   add('What the products come with:');
   for (const f of r.completeness) add(`  ${f.field.padEnd(26)} ${String(f.have).padStart(6)} of ${f.of}  (${pct(f.have, f.of)})`);
+  add();
+  add('Searchable key specs (share of products):');
+  for (const k of r.keySpecs) {
+    add(`  ${k.category.padEnd(18)} ${String(k.products).padStart(6)}  processor ${pct(k.processor, k.products)}, memory ${pct(k.memory, k.products)}, storage ${pct(k.storage, k.products)}, all three ${pct(k.allThree, k.products)}, screen ${pct(k.screen, k.products)}, OS ${pct(k.os, k.products)}`);
+  }
   add();
   add(`Prices: ${r.pricing.priced} priced, ${r.pricing.neverPriced} never priced, ${r.pricing.stale} out of date, ${r.pricing.withPriceError} with errors.`);
   add(`  Currencies: ${r.pricing.currencies.map((c) => `${c.currency} ${c.count}`).join(', ') || '-'}`);

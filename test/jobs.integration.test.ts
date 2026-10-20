@@ -319,6 +319,46 @@ describe.skipIf(!url)('jobs against a real database', () => {
     expect(await refreshFacts(db)).toBe(0);
   });
 
+  it('searches by key specs, shows them, and reports how many products have them', async () => {
+    fake.pages = {
+      Lenovo: [[
+        listing('L1', { title: 'THINKPAD T14 G4 I5-1335U 16GB 512GB 14IN WUXGA W11P' }),
+        listing('L2', { title: 'THINKPAD E16 G1 I3-1315U 8GB 256GB 16IN W11P' }),
+        listing('L3', { title: 'THINKPAD P16S G2 CU7-155H 32GB 1TB RTX500 ADA 16IN W11P' }),
+        listing('L4', { title: 'THINKPAD X1 CARBON' }),
+      ]],
+      Dell: [[listing('D9', { manufacturerRaw: 'DELL', title: 'OPTIPLEX 7020 SFF I5-14500 16GB 512GB W11P', distributorSubcategory: 'Desktops' })]],
+    };
+    for (const sku of ['L1', 'L2', 'L3', 'L4', 'D9']) fake.prices.set(sku, price(sku, 1000, 3));
+    await run('catalog');
+
+    const { createServer } = await import('../src/web/server.js');
+    const { JobRunner } = await import('../src/jobs/runner.js');
+    const server = createServer(db, new JobRunner(db, 'config/scope.json'), () => scope).listen(0);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const skus = async (query: string) => [...(await (await fetch(`${base}/?${query}`)).text()).matchAll(/Ingram (\w+)</g)].map((m) => m[1]).sort();
+    try {
+      expect(await skus('cpu=5&memory=16')).toEqual(['D9', 'L1', 'L3']);
+      expect(await skus('cpu=5&memory=16&category=Laptops&screen=13-14')).toEqual(['L1']);
+      expect(await skus('storage=1024&gpu=on')).toEqual(['L3']);
+      expect(await skus('formFactor=Small+form+factor')).toEqual(['D9']);
+      expect(await skus('os=Windows+11+Pro&cpu=3')).toEqual(['D9', 'L1', 'L2', 'L3']); // L4's title states nothing
+      const list = await (await fetch(`${base}/?q=T14`)).text();
+      expect(list).toContain('Core i5 (i5-1335U) · 16 GB memory · 512 GB storage · 14&quot; WUXGA · Windows 11 Pro');
+      const product = await (await fetch(`${base}/product/${(await offer('L3')).id}`)).text();
+      expect(product).toContain('NVIDIA RTX 500 Ada');
+      expect(product).toContain('read from Ingram&#39;s product title');
+
+      const r = await buildReport(db);
+      expect(r.keySpecs.find((k) => k.category === 'Laptops')).toMatchObject({ products: 4, allThree: 3, screen: 3 });
+      expect(r.unreadTitles).toEqual([{ category: 'Laptops', manufacturer: 'Lenovo', title: 'THINKPAD X1 CARBON' }]);
+      expect(findings(r).join(' ')).toMatch(/Processor, memory and storage could be read from the title for 80% of laptops and desktops \(4 of 5\)/);
+      expect(await (await fetch(`${base}/report`)).text()).toContain('Searchable key specs');
+    } finally {
+      server.close();
+    }
+  });
+
   it('only lets one update run at a time', async () => {
     await withJobLock(db, async () => {
       await expect(run('refresh')).rejects.toThrow(JobAlreadyRunningError);
