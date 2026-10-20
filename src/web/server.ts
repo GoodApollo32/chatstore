@@ -233,12 +233,12 @@ function describeCounts(jobType: string, c: any): string {
   if (jobType === 'price_stock') return `${c.refreshed ?? 0} of ${c.requested ?? 0} updated · ${c.failed ?? 0} failed · ${c.costChanged ?? 0} cost changes · ${c.inStockCanada ?? 0} in stock in Canada`;
   const excluded = Object.values(c.excluded ?? {}).reduce((a: number, b: any) => a + Number(b), 0);
   const n = (v: unknown) => Number(v ?? 0).toLocaleString('en-CA');
-  const numbers = `${n(c.fetched)} looked at · ${n(c.created)} new · ${n(c.updated)} changed · ${n(c.unchanged)} unchanged · ${n(excluded)} left out · ${n(c.sentToMatchReview)} to match review · ${n(c.priced)} new priced${c.priceFailed ? ` (${n(c.priceFailed)} failed)` : ''} · ${n(c.detailsFetched)} with specifications fetched`;
+  const numbers = `${n(c.fetched)} looked at · ${n(c.created)} new · ${n(c.updated)} changed · ${n(c.unchanged)} unchanged · ${n(excluded)} left out · ${n(c.sentToMatchReview)} to match review · ${n(c.priced)} new priced${c.priceFailed ? ` (${n(c.priceFailed)} failed)` : ''} · ${n(c.detailsFetched)} product details fetched${c.specsFound !== undefined || c.detailsFetched ? ` (${n(c.specsFound)} with specifications)` : ''}`;
   // While running, say which of the three steps the pull is on.
   const stage =
     c.stage === 'catalog' ? 'Step 1 of 3: going through Ingram\'s catalog'
     : c.stage === 'pricing' ? `Step 2 of 3: pricing products, ${n((c.priced ?? 0) + (c.priceFailed ?? 0))} of ${n(c.stageTotal)} done`
-    : c.stage === 'details' ? `Step 3 of 3: fetching specifications one product at a time, ${n(c.detailsFetched)} of ${n(c.stageTotal)} done${minutesLeft(c.stageTotal - c.detailsFetched)}`
+    : c.stage === 'details' ? `Step 3 of 3: fetching product details one product at a time, ${n(c.detailsFetched)} of ${n(c.stageTotal)} done (${n(c.specsFound)} with specifications)${minutesLeft(c.stageTotal - c.detailsFetched)}`
     : null;
   return stage ? `<b>${esc(stage)}</b><br>${numbers}` : numbers;
 }

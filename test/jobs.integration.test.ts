@@ -243,6 +243,30 @@ describe.skipIf(!url)('jobs against a real database', () => {
     expect(await rereadStoredData(db, scope.warehouseCountries)).toEqual({ warehouses: 0, specs: 0 });
   });
 
+  it('stores specifications from product details and shows them on the product page', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { parseDetails } = await import('../src/ingram/parse.js');
+    const sample = JSON.parse(readFileSync(new URL('./fixtures/ingram-spec/details.json', import.meta.url), 'utf8'));
+    // A1 gets Ingram's documented sample reply; everything else a reply without specifications.
+    fake.details = async (sku: string) => parseDetails(sku === 'A1' ? sample : { ingramPartNumber: sku, description: 'X' }) as never;
+    const result = await run('catalog');
+    const counts = (await db.query(`SELECT counts FROM sync_run WHERE id = $1`, [result.runId])).rows[0].counts;
+    expect(counts).toMatchObject({ detailsFetched: 6, specsFound: 1 });
+
+    const { createServer } = await import('../src/web/server.js');
+    const { JobRunner } = await import('../src/jobs/runner.js');
+    const server = createServer(db, new JobRunner(db, 'config/scope.json'), () => scope).listen(0);
+    try {
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const html = await (await fetch(`${base}/product/${(await offer('A1')).id}`)).text();
+      expect(html).toContain('Operating System');
+      expect(html).toContain('Windows 11 Pro');
+      expect(await (await fetch(`${base}/updates`)).text()).toContain('6 product details fetched (1 with specifications)');
+    } finally {
+      server.close();
+    }
+  });
+
   it('only lets one update run at a time', async () => {
     await withJobLock(db, async () => {
       await expect(run('refresh')).rejects.toThrow(JobAlreadyRunningError);
@@ -327,7 +351,7 @@ describe.skipIf(!url)('jobs against a real database', () => {
     const server = createServer(db, new JobRunner(db, 'config/scope.json'), () => scope).listen(0);
     try {
       const html = await (await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/updates`)).text();
-      expect(html).toContain('Step 3 of 3: fetching specifications one product at a time, 1,200 of 4,358 done (about 63 min left)');
+      expect(html).toContain('Step 3 of 3: fetching product details one product at a time, 1,200 of 4,358 done (0 with specifications) (about 63 min left)');
       expect(html).toContain('15,692 looked at');
     } finally {
       server.close();

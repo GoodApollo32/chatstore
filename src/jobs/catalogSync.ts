@@ -16,6 +16,8 @@ export interface CatalogCounts {
   priced: number;
   priceFailed: number;
   detailsFetched: number;
+  /** Of those, how many replies had specifications we could read. */
+  specsFound?: number;
   /** While running: which step the pull is on, and how many products that step has to get through. */
   stage?: 'catalog' | 'pricing' | 'details';
   stageTotal?: number;
@@ -312,6 +314,7 @@ async function fetchDetails(
       const d = await connector.details!(offer.sku);
       unavailableStreak = 0;
       counts.detailsFetched++;
+      if (Object.keys(d.specs).length) counts.specsFound = (counts.specsFound ?? 0) + 1;
       if (d.isRefurbished) refurbished++;
       if (counts.detailsFetched % 10 === 0) await saveProgressFn();
       await db.query(
