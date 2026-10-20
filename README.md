@@ -87,6 +87,29 @@ Double-click **Stop Catalog**. Your data is kept. Docker Desktop must be running
 
 ---
 
+## Specifications
+
+Ingram Canada doesn't send product specifications, so the program reads the key ones from Ingram's product titles:
+processor, memory, storage, screen size, Windows edition, graphics and desktop type. You can filter on them on the
+search page, and each product shows them under its title. Titles are short and sometimes cut off, so not every product
+has every spec. The data-quality report's **Searchable key specs** table shows how many do, with example titles
+that couldn't be read. Products whose title doesn't state a spec drop out when you filter on that spec.
+
+### Icecat (fuller specifications and photos)
+
+Icecat is a free product-information catalog for brands that sponsor it. To check how much of our catalog it covers:
+
+1. Go to **https://icecat.biz**, click **Register**, and choose the free **Open Icecat** account. Confirm your email.
+2. Double-click **Edit Settings** and fill in `ICECAT_USERNAME=` with your Icecat **username** (never your password).
+   Save and close.
+3. Double-click **Check Icecat**. It looks up 10 products from each manufacturer and shows, for each:
+   - ✔ full specifications and photos
+   - ~ found, but only basic information
+   - ✘ only in Icecat's paid version, or not in Icecat at all
+
+   It ends with a summary per manufacturer. It saves Icecat's replies in the `recordings` folder; nothing in the
+   catalog changes.
+
 ## Changing what gets pulled
 
 The file `config\scope.json` (open with Notepad) lists:
@@ -94,8 +117,9 @@ The file `config\scope.json` (open with Notepad) lists:
   finds nothing, the pull tries each of the other names automatically. If the report lists "Manufacturer names we
   didn't recognise" and one of them is really Lenovo, HP or Dell, add it here.
 - **rules**: how Ingram's categories become ours (Laptops, Desktops, Monitors, Docking Stations), and what to leave
-  out (refurbished, tablets, parts, bags, warranties, and Lenovo laptops/desktops whose part number ends in "CA",
-  the French-Canadian versions). Rules are checked top to bottom; the first match wins.
+  out (special-bid and configure-to-order listings, refurbished, tablets, parts, bags, warranties, and Lenovo
+  laptops/desktops whose part number ends in "CA", the French-Canadian versions). Rules are checked top to bottom;
+  the first match wins. Products a rule leaves out disappear from search the next time the catalog starts or updates.
 - **warehouseCountries**: lets us state which warehouses are Canadian once we know Ingram's warehouse codes.
 
 Changes apply on the next catalog pull. No restart is needed. If you're unsure about an edit, ask before saving.
@@ -135,6 +159,7 @@ TypeScript (Node 22) + PostgreSQL. `npm install`, then:
 | `npm test` | Unit tests. Set `TEST_DATABASE_URL` to a throwaway database to include the database tests. |
 | `npm run cli -- smoke` | Connection check (needs the `INGRAM_*` variables). |
 | `npm run cli -- catalog` / `refresh` / `report` / `serve` | Run a job, print the report, start the page (needs `DATABASE_URL`). |
+| `npm run cli -- icecat` | Icecat coverage check on a sample of products (needs `DATABASE_URL` and `ICECAT_USERNAME`). |
 
 Layout: `src/ingram` (API client with endpoint allowlist, parsing, connector), `src/jobs` (catalog pull, price & stock
 refresh, schedule), `src/web` (search page), `src/report` (data-quality report), `db/migrations` (schema),

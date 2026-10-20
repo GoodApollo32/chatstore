@@ -359,6 +359,37 @@ describe.skipIf(!url)('jobs against a real database', () => {
     }
   });
 
+  it('checks a sample of products against Icecat and saves the replies', async () => {
+    await run('catalog');
+    const { mkdtempSync, readdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { icecatCheck } = await import('../src/icecat/check.js');
+    const dir = mkdtempSync(join(tmpdir(), 'icecat-'));
+    const asked: URL[] = [];
+    const fakeIcecat = (async (input: any) => {
+      const url = new URL(String(input));
+      asked.push(url);
+      const body = url.searchParams.get('Brand') === 'HP' || url.searchParams.get('GTIN')
+        ? { data: { GeneralInfo: { Title: 'x' }, FeaturesGroups: [{ Features: [{}, {}] }], Gallery: [{}] } }
+        : { Message: 'You are not allowed to have Full Icecat access' };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as typeof fetch;
+    const log: string[] = [];
+    const original = console.log;
+    console.log = (s?: unknown) => void log.push(String(s ?? ''));
+    try {
+      expect(await icecatCheck(db, 'chris-test', dir, fakeIcecat)).toBe(true);
+    } finally {
+      console.log = original;
+    }
+    expect(asked[0]!.searchParams.get('UserName')).toBe('chris-test');
+    const text = log.join('\n');
+    expect(text).toMatch(/HP\s+2 of 2 full/);
+    expect(text).toMatch(/Lenovo\s+0 of \d+ full · 0 basic · \d+ paid only/);
+    expect(readdirSync(dir).filter((f) => f.startsWith('icecat-')).length).toBe(asked.length);
+  }, 30_000);
+
   it('only lets one update run at a time', async () => {
     await withJobLock(db, async () => {
       await expect(run('refresh')).rejects.toThrow(JobAlreadyRunningError);

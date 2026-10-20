@@ -1,5 +1,6 @@
 import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
+import { icecatCheck } from './icecat/check.js';
 import { createPool } from './db/pool.js';
 import { JobRunner } from './jobs/runner.js';
 import { rereadStoredData } from './jobs/reread.js';
@@ -16,6 +17,7 @@ const HELP = `Commands:
   catalog     Run a full catalog pull now
   refresh     Refresh prices & stock now
   report      Print the data-quality report
+  icecat      Check how many of our products Icecat has specs and images for (needs ICECAT_USERNAME)
   migrate     Set up or update the database`;
 
 async function main(): Promise<number> {
@@ -72,6 +74,19 @@ async function main(): Promise<number> {
       console.log(reportAsText(await buildReport(db)));
       await db.end();
       return 0;
+    case 'icecat': {
+      const username = process.env.ICECAT_USERNAME?.trim();
+      if (!username) {
+        console.error('Missing setting ICECAT_USERNAME. Add your Icecat username to the .env file (see the README, "Icecat").');
+        await db.end();
+        return 1;
+      }
+      try {
+        return (await icecatCheck(db, username)) ? 0 : 1;
+      } finally {
+        await db.end();
+      }
+    }
     default:
       console.error(`Unknown command "${command}".\n${HELP}`);
       await db.end();
