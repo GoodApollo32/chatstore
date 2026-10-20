@@ -124,8 +124,12 @@ The conditions attached to a Need Profile that a Master Product must meet, such 
 _Avoid_: filters, criteria, specs (ambiguous)
 
 **Matching Products**:
-The In Stock Master Products that meet a Need Profile's Requirements. The Customer sees all of them as a list they can narrow down.
+The Master Products that meet a Need Profile's Requirements and are In Stock in at least the quantity the Customer asked for. The Customer sees all of them as a list they can narrow down.
 _Avoid_: results, recommendations, picks
+
+**Storefront**:
+The full-screen customer page: one question box at the top where the chatbot talks with the Customer, and the Matching Products below, browsable and filterable like any online store. The chatbot stays at the top for follow-up questions.
+_Avoid_: shop, website, portal, landing page
 
 **Markup Rule**:
 How a Category's Customer Price is derived from Cost: a percentage on top of Cost, with a minimum dollar margin per unit.
