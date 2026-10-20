@@ -123,6 +123,10 @@ _Avoid_: persona, use case, bundle, template
 The conditions attached to a Need Profile that a Master Product must meet, such as Category, minimum processor, memory and storage, and Windows edition.
 _Avoid_: filters, criteria, specs (ambiguous)
 
+**Software List**:
+The MSP's own list of applications its Customers use, each with the software maker's recommended specs. When a Customer names an application on it, its specs tighten the Need Profile's Requirements (the stricter value wins on each point). Applications not on the list are flagged for the team rather than guessed.
+_Avoid_: software requirements database, compatibility list
+
 **Matching Products**:
 The Master Products that meet a Need Profile's Requirements and are In Stock in at least the quantity the Customer asked for. The Customer sees all of them as a list they can narrow down.
 _Avoid_: results, recommendations, picks
@@ -144,7 +148,7 @@ A Category's percentage on top of Cost, with its minimum dollar margin. It sets 
 _Avoid_: margin rule, pricing rule
 
 **Customer Price**:
-The price a Customer sees for one unit: the Competitor Price, capped at MSRP; with no Competitor Price, Cost plus the Markup Rule, capped at MSRP. It never goes below the Price Floor, even when that puts it above the Competitor Price. EHF is shown as its own line beside it and is never folded in. Cost itself is never shown to a Customer.
+The price a Customer sees for one unit: the Competitor Price, capped at MSRP; with no Competitor Price, Cost plus the Markup Rule, capped at MSRP. It never goes below the Price Floor, even when that puts it above the Competitor Price or MSRP. EHF is shown as its own line beside it and is never folded in. Cost itself is never shown to a Customer.
 _Avoid_: sell price, retail price, price (ambiguous)
 
 **Quote Request**:
