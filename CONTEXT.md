@@ -108,3 +108,34 @@ _Avoid_: auto-order, order placement
 **Bid Threshold**:
 A dollar amount that, once the total Cost of new hardware from one Manufacturer in an order reaches it, marks the order for a Special Pricing request before the purchase order is placed. It is measured on Cost excluding EHF, per order, and the request happens after the customer has paid the regular price.
 _Avoid_: bid trigger, discount threshold
+
+### Storefront (later phases)
+
+**Customer**:
+An existing business client of the MSP who uses the storefront chatbot. Version one has no anonymous public buyers and one price list for every Customer.
+_Avoid_: user, visitor, buyer, client (ambiguous with the MSP's own wording)
+
+**Need Profile**:
+A named kind of need the MSP defines (e.g. "Office / admin desktop"), with the Requirements a product must meet to suit it. The chatbot's AI only decides which Need Profile fits what the Customer said; it never picks products itself.
+_Avoid_: persona, use case, bundle, template
+
+**Requirements**:
+The conditions attached to a Need Profile that a Master Product must meet, such as Category, minimum processor, memory and storage, and Windows edition.
+_Avoid_: filters, criteria, specs (ambiguous)
+
+**Matching Products**:
+The In Stock Master Products that meet a Need Profile's Requirements. The Customer sees all of them as a list they can narrow down.
+_Avoid_: results, recommendations, picks
+
+**Markup Rule**:
+How a Category's Customer Price is derived from Cost: a percentage on top of Cost, with a minimum dollar margin per unit.
+_Avoid_: margin rule, pricing rule
+
+**Customer Price**:
+The price a Customer sees for one unit: Cost plus the Category's Markup Rule. EHF is shown as its own line beside it and is never folded in. Cost itself is never shown to a Customer.
+_Avoid_: sell price, retail price, price (ambiguous)
+
+**Quote Request**:
+A Customer's request for a product they picked in the chatbot. It reaches the MSP team by email, and a person follows up with a formal quote; no payment is taken in version one.
+_Avoid_: order, lead, inquiry
+
