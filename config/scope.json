@@ -52,5 +52,6 @@
     "_readme": "Fill in once real Ingram Canada warehouse IDs are known, e.g. \"10\": \"US\". Until then the country is worked out from the warehouse's city and province/state."
   },
 
-  "fetchProductDetails": true
+  "_fetchProductDetailsReadme": "Ingram Canada's product details carry no specifications (checked 2026-10-20), so this step is off. Turning it on costs one Ingram request per new product.",
+  "fetchProductDetails": false
 }

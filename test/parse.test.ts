@@ -125,3 +125,13 @@ describe('specifications in other layouts', () => {
     expect(d.specs).toEqual({ CPU: 'i5' });
   });
 });
+
+describe('real Ingram Canada product details', () => {
+  it('has no specifications or long description (open question Q2), but reads the rest', () => {
+    const d = parseDetails(JSON.parse(readFileSync(new URL('./fixtures/ingram-ca/details-production.json', import.meta.url), 'utf8')));
+    expect(d.distributorSku).toBe('FL4752');
+    expect(d.specs).toEqual({});
+    expect(d.longDescription).toBeNull();
+    expect(d.isRefurbished).toBe(false);
+  });
+});

@@ -21,6 +21,8 @@ export interface CatalogCounts {
   /** While running: which step the pull is on, and how many products that step has to get through. */
   stage?: 'catalog' | 'pricing' | 'details';
   stageTotal?: number;
+  /** How many steps this pull has (the product-details step is optional). */
+  stageCount?: number;
 }
 
 interface ResumeState {
@@ -83,7 +85,7 @@ export async function runCatalogSync(deps: {
     try {
       // 1. Walk the catalog for each manufacturer.
       const notFound: string[] = [];
-      counts.stage = 'catalog';
+      Object.assign(counts, { stage: 'catalog', stageCount: scope.fetchProductDetails && connector.details ? 3 : 2 });
       for (let m = state.manufacturerIndex; m < scope.manufacturers.length; m++) {
         const manufacturer = scope.manufacturers[m]!;
         const resuming = m === state.manufacturerIndex && (state.nextPage > 1 || (state.termIndex ?? 0) > 0);
@@ -182,6 +184,7 @@ export async function runCatalogSync(deps: {
 function clearStage(counts: CatalogCounts): void {
   delete counts.stage;
   delete counts.stageTotal;
+  delete counts.stageCount;
 }
 
 async function recordExcluded(db: Db, runId: number, l: CatalogListing, reason: string, counts: CatalogCounts): Promise<void> {

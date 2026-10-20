@@ -63,10 +63,10 @@ class FakeConnector implements DistributorConnector {
 describe.skipIf(!url)('jobs against a real database', () => {
   let db: Db;
   let fake: FakeConnector;
-  const run = (kind: 'catalog' | 'refresh') => {
+  const run = (kind: 'catalog' | 'refresh', scopeUsed = scope) => {
     const callLogger = new CallLogger(db, 'ingram');
     return kind === 'catalog'
-      ? runCatalogSync({ db, connector: fake, scope, callLogger, trigger: 'command' })
+      ? runCatalogSync({ db, connector: fake, scope: scopeUsed, callLogger, trigger: 'command' })
       : runPriceStockRefresh({ db, connector: fake, callLogger, trigger: 'command' });
   };
   const offer = async (sku: string) => (await db.query(`SELECT * FROM distributor_offer WHERE distributor_sku = $1`, [sku])).rows[0];
@@ -103,7 +103,7 @@ describe.skipIf(!url)('jobs against a real database', () => {
   });
 
   it('pulls the catalog: keeps in-scope products, counts the rest, prices new products', async () => {
-    const result = await run('catalog');
+    const result = await run('catalog', { ...scope, fetchProductDetails: true });
     expect(result.status).toBe('succeeded');
 
     const offers = (await db.query(`SELECT distributor_sku, category FROM distributor_offer ORDER BY 1`)).rows;
@@ -249,7 +249,7 @@ describe.skipIf(!url)('jobs against a real database', () => {
     const sample = JSON.parse(readFileSync(new URL('./fixtures/ingram-spec/details.json', import.meta.url), 'utf8'));
     // A1 gets Ingram's documented sample reply; everything else a reply without specifications.
     fake.details = async (sku: string) => parseDetails(sku === 'A1' ? sample : { ingramPartNumber: sku, description: 'X' }) as never;
-    const result = await run('catalog');
+    const result = await run('catalog', { ...scope, fetchProductDetails: true });
     const counts = (await db.query(`SELECT counts FROM sync_run WHERE id = $1`, [result.runId])).rows[0].counts;
     expect(counts).toMatchObject({ detailsFetched: 6, specsFound: 1 });
 
@@ -265,6 +265,21 @@ describe.skipIf(!url)('jobs against a real database', () => {
     } finally {
       server.close();
     }
+  });
+
+  it('skips the product-details step when it is switched off, and says 2 steps', async () => {
+    let asked = 0;
+    fake.details = async () => { asked++; throw new Error('should not be called'); };
+    const seen: any[] = [];
+    const original = fake.priceAndStock.bind(fake);
+    fake.priceAndStock = async (skus) => {
+      seen.push((await db.query(`SELECT counts FROM sync_run ORDER BY id DESC LIMIT 1`)).rows[0].counts);
+      return original(skus);
+    };
+    const result = await run('catalog', { ...scope, fetchProductDetails: false });
+    expect(result.status).toBe('succeeded');
+    expect(asked).toBe(0);
+    expect(seen[0]).toMatchObject({ stage: 'pricing', stageCount: 2 });
   });
 
   it('only lets one update run at a time', async () => {

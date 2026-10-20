@@ -12,7 +12,7 @@ must still be confirmed in the sandbox (open questions Q1–Q6 in `docs/handoff-
 | Headers `IM-CustomerNumber`, `IM-CountryCode`, `IM-CorrelationID` required; `IM-SenderID` optional | Same, on every catalog endpoint | ✅ |
 | `GET /resellers/v6/catalog`, `pageSize` max 100 | Same. Also `nextPage`/`previousPage` links and `recordsFound` total | ✅ |
 | `POST /resellers/v6/catalog/priceandavailability`, up to 50 products | Same | ✅ |
-| `GET /resellers/v6/catalog/details/{ingramPartNumber}` US/IN/NL only | Spec says the same: "Currently, this API is available in the USA, India, and Netherlands" | ✅ (so Q2 is likely "no" for Canada) |
+| `GET /resellers/v6/catalog/details/{ingramPartNumber}` US/IN/NL only | Spec says the same: "Currently, this API is available in the USA, India, and Netherlands" | ✅ Q2 answered (2026-10-20): Canada answers, but the reply has **no specifications and no long description** (see item 17) |
 
 ## Differences and corrections
 
@@ -71,3 +71,15 @@ token, catalog search, details, and price & availability calls. Any other path w
 15. **Warehouse IDs come back as numbers in one example and strings in another**, and some warehouses have no
     `location`. Those can't be placed in a country and never count as In Stock until mapped in `config/scope.json`.
 16. **The 207 example nests `pricing` inside `availability`**, unlike the 200 example. The parser accepts both.
+
+## Found in production (Chris's account, 2026-10-20)
+
+17. **Product details for Canada carry no specifications.** A real reply (`test/fixtures/ingram-ca/details-production.json`)
+    has indicators, category/subcategory, vendor, a weight with `plantId: "CA01"`, and nothing else useful: no
+    `technicalSpecifications`, no `productDetailDescription`, no images. The product-details step is therefore off by
+    default (`fetchProductDetails: false` in `config/scope.json`); specs come from product titles and Icecat instead.
+18. **Special-bid configure-to-order listings appear in catalog search**, e.g. description
+    "BID5326456455 11-APR-2026 CTO THINKCENTRE M70Q GEN 5 INTEL CORE I", `productClass: "X"`, direct ship only.
+19. **Descriptions are cut off at about 60 characters** ("…INTEL CORE I"). Reading specs from titles must combine
+    `description` and `extraDescription` and cope with truncation.
+

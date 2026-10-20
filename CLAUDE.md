@@ -106,7 +106,7 @@ Ingram `serviceFees`).
 
 ## Open questions (track until answered)
 
-Q1 Does CA work for search + P&A · Q2 Do product details work for Canada (or do we use P&A attributes) ·
+Q1 Does CA work for search + P&A · Q2 Do product details work for Canada (answered: they answer but carry no specs; specs come from titles + Icecat) ·
 Q3 Is there a bulk catalog/price file from Ingram Canada · Q4 Customer cost vs MSRP, CAD? ·
 Q5 Canadian warehouse codes vs US · Q6 Actual rate limits (answered: 60 requests/minute, reported in X-RateLimit-* headers; see
 `docs/ingram-api-verification.md` item 11).
