@@ -1,4 +1,5 @@
 import type { Db } from '../db/pool.js';
+import { factsFromTitle } from '../domain/titleFacts.js';
 import { warehouseCountry } from '../domain/warehouse.js';
 import { parseDetails, parseSpecs } from '../ingram/parse.js';
 import type { Scope } from '../scope.js';
@@ -8,7 +9,7 @@ import type { Scope } from '../scope.js';
  * without pulling everything from Ingram again (that's why raw responses are kept). Runs at start-up
  * and before each update; quick, and changes nothing that's already right.
  */
-export async function rereadStoredData(db: Db, scope: Scope): Promise<{ leftOut: number; warehouses: number; specs: number }> {
+export async function rereadStoredData(db: Db, scope: Scope): Promise<{ leftOut: number; warehouses: number; specs: number; facts: number }> {
   // Products the scope rules now leave out drop out of search straight away (adding products needs a catalog pull).
   let leftOut = 0;
   const { rows: offers } = await db.query<{
@@ -60,5 +61,41 @@ export async function rereadStoredData(db: Db, scope: Scope): Promise<{ leftOut:
     );
     if (Object.keys(found).length) specs++;
   }
-  return { leftOut, warehouses, specs };
+  return { leftOut, warehouses, specs, facts: await refreshFacts(db) };
+}
+
+/**
+ * Searchable key specs for every product, read from its title. Facts from a better source (e.g. Icecat,
+ * once added) are kept; the title only fills what they leave open. Returns how many products changed.
+ */
+export async function refreshFacts(db: Db): Promise<number> {
+  const { rows } = await db.query<{ id: number; title: string; category: string; facts: Record<string, unknown>; fact_sources: Record<string, string> }>(
+    `SELECT id, title, category, facts, fact_sources FROM master_product`,
+  );
+  let changed = 0;
+  for (const r of rows) {
+    const facts: Record<string, unknown> = {};
+    const sources: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r.facts ?? {})) {
+      const source = r.fact_sources?.[k];
+      if (source && source !== 'title') {
+        facts[k] = v;
+        sources[k] = source;
+      }
+    }
+    for (const [k, v] of Object.entries(factsFromTitle(r.title, r.category))) {
+      if (k in facts) continue;
+      facts[k] = v;
+      sources[k] = 'title';
+    }
+    if (sameJson(facts, r.facts ?? {}) && sameJson(sources, r.fact_sources ?? {})) continue;
+    await db.query(`UPDATE master_product SET facts = $2, fact_sources = $3, updated_at = now() WHERE id = $1`, [r.id, JSON.stringify(facts), JSON.stringify(sources)]);
+    changed++;
+  }
+  return changed;
+}
+
+function sameJson(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]));
 }

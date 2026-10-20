@@ -236,11 +236,11 @@ describe.skipIf(!url)('jobs against a real database', () => {
       [a1.id, JSON.stringify([{ ingramPartNumber: 'A1', productDetailDescription: 'ThinkPad long text', technicalSpecifications: [{ HeaderName: 'Basic', AttributeName: 'RAM', AttributeValue: '16 GB' }] }])],
     );
     const { rereadStoredData } = await import('../src/jobs/reread.js');
-    expect(await rereadStoredData(db, scope)).toEqual({ leftOut: 0, warehouses: 1, specs: 1 });
+    expect(await rereadStoredData(db, scope)).toEqual({ leftOut: 0, warehouses: 1, specs: 1, facts: 0 });
     expect((await db.query(`SELECT country FROM offer_stock WHERE offer_id = $1 AND warehouse_id = '70'`, [a1.id])).rows[0].country).toBe('CA');
     const m = (await db.query(`SELECT specs, description FROM master_product WHERE id = $1`, [a1.master_product_id])).rows[0];
     expect(m).toEqual({ specs: { RAM: '16 GB' }, description: 'ThinkPad long text' });
-    expect(await rereadStoredData(db, scope)).toEqual({ leftOut: 0, warehouses: 0, specs: 0 });
+    expect(await rereadStoredData(db, scope)).toEqual({ leftOut: 0, warehouses: 0, specs: 0, facts: 0 });
   });
 
   it('stores specifications from product details and shows them on the product page', async () => {
@@ -299,6 +299,24 @@ describe.skipIf(!url)('jobs against a real database', () => {
     expect(await offer('A1')).toMatchObject({ listed: false, excluded_reason: 'Special-bid configurations' });
     const r = await buildReport(db);
     expect(r.hidden).toMatchObject({ leftOutByRules: 1, noLongerListed: 0 });
+  });
+
+  it('reads searchable key specs from titles during a pull, and again when the reading improves', async () => {
+    fake.pages.Lenovo![0]![0] = listing('A1', { title: 'THINKPAD T14 G4 I5-1335U 16GB 512GB 14IN WUXGA W11P' });
+    await run('catalog');
+    const master = async () => (await db.query(`SELECT facts, fact_sources FROM master_product WHERE id = $1`, [(await offer('A1')).master_product_id])).rows[0];
+    expect((await master()).facts).toMatchObject({ processorTier: 5, processorModel: 'i5-1335U', memoryGb: 16, storageGb: 512, screenInches: 14, os: 'Windows 11 Pro' });
+    expect((await master()).fact_sources.memoryGb).toBe('title');
+
+    // A fact from a better source is kept; stale title facts are recomputed.
+    const id = (await offer('A1')).master_product_id;
+    await db.query(
+      `UPDATE master_product SET facts = facts || '{"memoryGb": 32, "storageGb": 1}'::jsonb, fact_sources = fact_sources || '{"memoryGb": "icecat"}'::jsonb WHERE id = $1`, [id],
+    );
+    const { refreshFacts } = await import('../src/jobs/reread.js');
+    expect(await refreshFacts(db)).toBe(1);
+    expect((await master()).facts).toMatchObject({ memoryGb: 32, storageGb: 512 });
+    expect(await refreshFacts(db)).toBe(0);
   });
 
   it('only lets one update run at a time', async () => {

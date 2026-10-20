@@ -3,6 +3,7 @@ import { normalizeMpn, normalizeUpc } from '../domain/mpn.js';
 import { DetailsUnavailableError, type CatalogListing, type DistributorConnector } from '../domain/types.js';
 import type { Scope } from '../scope.js';
 import { refreshOffers, summarizeErrors } from './priceStock.js';
+import { refreshFacts } from './reread.js';
 import { finishRun, saveProgress, startRun, withJobLock, type CallLogger, type JobResult, type Trigger } from './runs.js';
 
 export interface CatalogCounts {
@@ -127,6 +128,9 @@ export async function runCatalogSync(deps: {
         Object.assign(state, { manufacturerIndex: m + 1, termIndex: 0, nextPage: 1 });
         await saveProgress(db, runId, counts, state);
       }
+
+      // Searchable key specs for new and changed products.
+      await refreshFacts(db);
 
       // 2. Products the distributor no longer returns stay in the database but drop out of search.
       // Skipped when a manufacturer search came back empty: that's more likely a search problem than
