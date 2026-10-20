@@ -131,15 +131,23 @@ _Avoid_: results, recommendations, picks
 The full-screen customer page: one question box at the top where the chatbot talks with the Customer, and the Matching Products below, browsable and filterable like any online store. The chatbot stays at the top for follow-up questions.
 _Avoid_: shop, website, portal, landing page
 
+**Competitor Price**:
+CDW.ca's current price for the same Master Product (same Manufacturer and MPN), as listed publicly. It is never collected from CDW's own website.
+_Avoid_: CDW price, street price, market price
+
+**Price Floor**:
+The lowest Customer Price the MSP accepts for one unit: Cost plus the Category's minimum dollar margin.
+_Avoid_: minimum price, cost price
+
 **Markup Rule**:
-How a Category's Customer Price is derived from Cost: a percentage on top of Cost, with a minimum dollar margin per unit.
+A Category's percentage on top of Cost, with its minimum dollar margin. It sets the Customer Price only when there is no Competitor Price.
 _Avoid_: margin rule, pricing rule
 
 **Customer Price**:
-The price a Customer sees for one unit: Cost plus the Category's Markup Rule. EHF is shown as its own line beside it and is never folded in. Cost itself is never shown to a Customer.
+The price a Customer sees for one unit: the Competitor Price, capped at MSRP; with no Competitor Price, Cost plus the Markup Rule, capped at MSRP. It never goes below the Price Floor, even when that puts it above the Competitor Price. EHF is shown as its own line beside it and is never folded in. Cost itself is never shown to a Customer.
 _Avoid_: sell price, retail price, price (ambiguous)
 
 **Quote Request**:
-A Customer's request for a product they picked in the chatbot. It reaches the MSP team by email, and a person follows up with a formal quote; no payment is taken in version one.
+A Customer's request for one or more products, each with a quantity, collected in a quote basket on the Storefront. It reaches the MSP team by email, and a person follows up with a formal quote; no payment is taken in version one.
 _Avoid_: order, lead, inquiry
 

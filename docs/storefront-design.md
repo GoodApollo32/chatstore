@@ -21,6 +21,24 @@ facts are in `docs/typebot-research.md`; the AI/rules split is ADR 0004.
 | Need Profiles (v1) | Office/admin desktop; office/admin laptop; power-user/engineering laptop; power-user desktop/workstation; monitor by size; docking station (matched to laptop brand). |
 | Office/admin desktop | Desktops (tower, small form factor, mini PC; all-in-one only if asked); Core i5 / Core Ultra 5 / Ryzen 5 or better; 16 GB+ memory; 512 GB+ SSD; Windows 11 Pro; no price cap unless the Customer gives a budget. |
 
+| Customer Price | Match the Competitor Price exactly, capped at MSRP. Never below the Price Floor (Cost + minimum margin), even if that's above CDW. No Competitor Price → Markup Rule, capped at MSRP. |
+| Demo before the pitch | Build the Storefront and its product search now; run the chat on Typebot's free plan (200 chats/month, Typebot logo). The question box falls back to a normal product search if the chatbot is off or down. |
+| Photos and specs | Icecat's free catalog (Open Icecat). Coverage of our part numbers still to be checked (Icecat was unreachable from the build environment). |
+| Product card | Photo, name, key specs (processor, memory, storage, screen), Customer Price with EHF on its own line, "In stock" (no quantities), manufacturer, Request quote. Filters: price, manufacturer, processor level, memory, storage, screen size, form factor. Lowest price first. |
+| Quote basket | Several products with quantities, sent as one Quote Request. |
+| Quote Request email | Customer name/company/email/phone; each line: manufacturer, MPN, Ingram SKU, quantity, Customer Price shown, Cost and margin (internal); "check live price" reminder with price age; BID THRESHOLD REACHED banner; full chat transcript. |
+| Need Profiles | The six drafts are accepted for now (see the table in the chat of 2026-10-20, copied below). |
+
+Need Profile drafts (accepted for now):
+
+| Need Profile | Requirements |
+|---|---|
+| Office / admin laptop | Laptops; Core i5 / Ultra 5 / Ryzen 5+; 16 GB+; 512 GB+ SSD; Windows 11 Pro; 13–15"; no workstations or gaming |
+| Power user / engineering laptop | Mobile workstations; Core i7 / Ultra 7 / Ryzen 7+; 32 GB+; 1 TB+ SSD; NVIDIA RTX professional graphics; Windows 11 Pro |
+| Power user desktop / workstation | Desktop workstations or towers; Core i7 / Ultra 7 / Ryzen 7+; 32 GB+; 1 TB+ SSD; dedicated graphics; Windows 11 Pro |
+| Monitor | Size asked for (22/24/27/32/34"); 1080p+, 1440p+ at 27"+; USB-C when docking/single cable is mentioned |
+| Docking station | Same manufacturer as the Customer's laptop (asked); USB-C / Thunderbolt to suit |
+
 ## Open
 
 - **Chatbot product and hosting**: TBD; it is the last part of the build and Chris pitches it to the business first.
@@ -29,5 +47,6 @@ facts are in `docs/typebot-research.md`; the AI/rules split is ADR 0004.
 - **Customer Price**: Chris wants "as close to MSRP as possible without going over CDW.ca's price for that part".
   Scraping cdw.ca is against CDW's site terms (see `docs/competitor-pricing-research.md`). The recommended source is
   CDW's price as listed on Google Shopping, via a paid search-data service, checked only for parts shown or quoted.
-  Pilot on ~200 part numbers first. Floor and fallback rules are pending.
-- Requirements for the other five Need Profiles; Quote Request email contents; product list fields and filters.
+  Pilot on ~200 part numbers first. How to source it (on demand vs every product daily) awaits Chris (Q8).
+- **Software requirements**: Chris wants the bot to look up recommended specs for software the Customer names
+  (e.g. AutoCAD, Revit, Sage). Source and how it combines with Need Profiles: next round.
