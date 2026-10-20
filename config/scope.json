@@ -1,5 +1,5 @@
 {
-  "_readme": "What the catalog pulls and how products are sorted. Safe to edit; changes apply on the next catalog pull. See README section 'Changing what gets pulled'.",
+  "_readme": "What the catalog pulls and how products are sorted. Safe to edit; products a rule now leaves out disappear from search when the catalog next starts or updates, other changes apply on the next catalog pull. See README section 'Changing what gets pulled'.",
 
   "manufacturers": [
     {
@@ -24,6 +24,9 @@
   "_rulesReadme": "Rules are checked top to bottom; the first match wins. Each rule can test the distributor's category ('distributorCategory'), sub-category ('distributorSubCategory') and/or product description ('description', or 'notDescription' for must-not-contain) (patterns, not case sensitive). A rule either puts the product in one of our categories ('putIn') or leaves it out ('exclude', with the reason shown in the data-quality report). Rules can also test our manufacturer name ('manufacturer', exact) and the manufacturer part number ('mpn', pattern). An 'exclude' rule with 'ourCategory' (a list of our categories) is checked after the category is decided, e.g. to drop Lenovo French-Canadian laptops and desktops. Products no rule matches are left out as 'Not in version-one categories'. These are starting guesses: check the translation table in the data-quality report after each pull.",
 
   "rules": [
+    { "exclude": "Special-bid configurations", "description": "^BID ?\\d|\\bBID ?#?\\d{6,}" },
+    { "exclude": "Configure-to-order (CTO) models", "description": "\\bCTO\\b" },
+    { "exclude": "Configure-to-order (CTO) models", "mpn": "CTO" },
     { "exclude": "Refurbished or open box", "description": "REFURB|RENEWED|RECERTIFIED|OPEN[ -]?BOX" },
     { "exclude": "Refurbished or open box", "distributorSubCategory": "REFURB" },
 

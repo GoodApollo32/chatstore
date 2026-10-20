@@ -236,11 +236,11 @@ describe.skipIf(!url)('jobs against a real database', () => {
       [a1.id, JSON.stringify([{ ingramPartNumber: 'A1', productDetailDescription: 'ThinkPad long text', technicalSpecifications: [{ HeaderName: 'Basic', AttributeName: 'RAM', AttributeValue: '16 GB' }] }])],
     );
     const { rereadStoredData } = await import('../src/jobs/reread.js');
-    expect(await rereadStoredData(db, scope.warehouseCountries)).toEqual({ warehouses: 1, specs: 1 });
+    expect(await rereadStoredData(db, scope)).toEqual({ leftOut: 0, warehouses: 1, specs: 1 });
     expect((await db.query(`SELECT country FROM offer_stock WHERE offer_id = $1 AND warehouse_id = '70'`, [a1.id])).rows[0].country).toBe('CA');
     const m = (await db.query(`SELECT specs, description FROM master_product WHERE id = $1`, [a1.master_product_id])).rows[0];
     expect(m).toEqual({ specs: { RAM: '16 GB' }, description: 'ThinkPad long text' });
-    expect(await rereadStoredData(db, scope.warehouseCountries)).toEqual({ warehouses: 0, specs: 0 });
+    expect(await rereadStoredData(db, scope)).toEqual({ leftOut: 0, warehouses: 0, specs: 0 });
   });
 
   it('stores specifications from product details and shows them on the product page', async () => {
@@ -280,6 +280,25 @@ describe.skipIf(!url)('jobs against a real database', () => {
     expect(result.status).toBe('succeeded');
     expect(asked).toBe(0);
     expect(seen[0]).toMatchObject({ stage: 'pricing', stageCount: 2 });
+  });
+
+  it('leaves out special-bid and configure-to-order listings, including ones already stored', async () => {
+    fake.pages.Lenovo![0]!.push(
+      listing('B1', { title: 'BID5326456455 11-APR-2026 CTO THINKCENTRE M70Q GEN 5 INTEL CORE I', distributorSubcategory: 'Desktop Computers' }),
+      listing('C1', { title: 'THINKPAD T14 G5 CTO', mpnRaw: '21MLCTO1WW' }),
+    );
+    const result = await run('catalog');
+    const counts = (await db.query(`SELECT counts FROM sync_run WHERE id = $1`, [result.runId])).rows[0].counts;
+    expect(counts.excluded).toMatchObject({ 'Special-bid configurations': 1, 'Configure-to-order (CTO) models': 1 });
+    expect(await offer('B1')).toBeUndefined();
+
+    // A listing stored before the rule existed is hidden at the next start-up, without a pull.
+    await db.query(`UPDATE distributor_offer SET title = 'BID5326456455 THINKPAD T14' WHERE distributor_sku = 'A1'`);
+    const { rereadStoredData } = await import('../src/jobs/reread.js');
+    expect((await rereadStoredData(db, scope)).leftOut).toBe(1);
+    expect(await offer('A1')).toMatchObject({ listed: false, excluded_reason: 'Special-bid configurations' });
+    const r = await buildReport(db);
+    expect(r.hidden).toMatchObject({ leftOutByRules: 1, noLongerListed: 0 });
   });
 
   it('only lets one update run at a time', async () => {

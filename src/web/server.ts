@@ -187,7 +187,7 @@ async function productPage(db: Db, id: number): Promise<string | null> {
       ['Our category', esc(o.category)],
       ['Ingram category', esc([o.distributor_category, o.distributor_subcategory].filter(Boolean).join(' › ') || '–')],
       ['Status', [o.discontinued ? 'Discontinued' : null, !o.authorized_to_purchase ? 'Not authorized for purchase' : null,
-        o.refurbished ? 'Refurbished' : null, !o.listed ? 'No longer listed by Ingram' : null, o.direct_ship ? 'Ships direct from manufacturer' : null]
+        o.refurbished ? 'Refurbished' : null, o.excluded_reason ? `Left out: ${esc(o.excluded_reason)}` : !o.listed ? 'No longer listed by Ingram' : null, o.direct_ship ? 'Ships direct from manufacturer' : null]
         .filter(Boolean).join(', ') || 'Active'],
     ])}</div>
     <h2>Price</h2>
@@ -334,7 +334,7 @@ function reportPage(r: DataQualityReport): string {
     <div class="card"><b>Things to look at</b><ul>${(fs.length ? fs : ['Nothing stands out.']).map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>
 
     <h2>What's in the catalog</h2>
-    <p>${r.totals.shown} products shown in search. Hidden: ${r.hidden.discontinued} discontinued, ${r.hidden.notAuthorized} not authorized for purchase, ${r.hidden.refurbished} refurbished, ${r.hidden.noLongerListed} no longer listed by Ingram.</p>
+    <p>${r.totals.shown} products shown in search. Hidden: ${r.hidden.discontinued} discontinued, ${r.hidden.notAuthorized} not authorized for purchase, ${r.hidden.refurbished} refurbished, ${r.hidden.noLongerListed} no longer listed by Ingram, ${r.hidden.leftOutByRules} left out by the scope rules since they were added (e.g. special-bid and configure-to-order listings).</p>
     ${table(['Manufacturer', 'Category', 'Products'], r.byManufacturerCategory.map((x) => [x.manufacturer, x.category, x.count]), [2])}
 
     <h2>What the products come with</h2>

@@ -205,8 +205,9 @@ async function processListing(db: Db, scope: Scope, runId: number, l: CatalogLis
   if (!classification.inScope) {
     // A product we had before that the rules now leave out (e.g. after a scope edit) drops out of search.
     await db.query(
-      `UPDATE distributor_offer SET listed = false, updated_at = now() WHERE distributor = $1 AND distributor_sku = $2 AND listed`,
-      [l.distributor, l.distributorSku],
+      `UPDATE distributor_offer SET listed = false, excluded_reason = $3, updated_at = now()
+       WHERE distributor = $1 AND distributor_sku = $2 AND (listed OR excluded_reason IS DISTINCT FROM $3)`,
+      [l.distributor, l.distributorSku, classification.reason],
     );
     return recordExcluded(db, runId, l, classification.reason, counts);
   }
@@ -238,7 +239,7 @@ async function processListing(db: Db, scope: Scope, runId: number, l: CatalogLis
     await db.query(
       `UPDATE distributor_offer SET manufacturer_raw = $3, mpn_raw = $4, upc = $5, title = $6, distributor_category = $7,
          distributor_subcategory = $8, category = $9, discontinued = $10, authorized_to_purchase = $11, direct_ship = $12,
-         raw_search = $13, last_seen_run_id = $14, catalog_synced_at = now(), listed = true
+         raw_search = $13, last_seen_run_id = $14, catalog_synced_at = now(), listed = true, excluded_reason = NULL
          ${changed ? ', updated_at = now()' : ''}
        WHERE distributor = $1 AND distributor_sku = $2`,
       values,

@@ -26,7 +26,7 @@ export class JobRunner {
     try {
       // Re-read the scope each run so edits apply without restarting.
       const scope = loadScope(this.scopeFile);
-      await rereadStoredData(this.db, scope.warehouseCountries);
+      await rereadStoredData(this.db, scope);
       const callLogger = new CallLogger(this.db, 'ingram');
       const connector = new IngramConnector(loadIngramConfig(), scope.warehouseCountries, { onCall: callLogger.record });
       return kind === 'catalog'

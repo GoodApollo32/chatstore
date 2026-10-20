@@ -8,7 +8,7 @@ export interface DataQualityReport {
   generatedAt: Date;
   totals: { products: number; offers: number; shown: number };
   byManufacturerCategory: { manufacturer: string; category: string; count: number }[];
-  hidden: { discontinued: number; notAuthorized: number; refurbished: number; noLongerListed: number };
+  hidden: { discontinued: number; notAuthorized: number; refurbished: number; noLongerListed: number; leftOutByRules: number };
   completeness: { field: string; have: number; of: number }[];
   /** Shown products for which Ingram's product-details call answered (specs may still be missing). */
   detailsFetched: number;
@@ -58,7 +58,8 @@ export async function buildReport(db: Db): Promise<DataQualityReport> {
     SELECT count(*) FILTER (WHERE listed AND discontinued)::int AS "discontinued",
            count(*) FILTER (WHERE listed AND NOT authorized_to_purchase)::int AS "notAuthorized",
            count(*) FILTER (WHERE listed AND refurbished)::int AS "refurbished",
-           count(*) FILTER (WHERE NOT listed)::int AS "noLongerListed"
+           count(*) FILTER (WHERE NOT listed AND excluded_reason IS NULL)::int AS "noLongerListed",
+           count(*) FILTER (WHERE NOT listed AND excluded_reason IS NOT NULL)::int AS "leftOutByRules"
     FROM distributor_offer`);
 
   const c = await one<Record<string, number>>(db, `
@@ -209,7 +210,7 @@ export function reportAsText(r: DataQualityReport): string {
   add();
   add(`Products in the catalog: ${r.totals.shown} shown in search (${r.totals.offers} listed by Ingram in total).`);
   for (const row of r.byManufacturerCategory) add(`  ${row.manufacturer.padEnd(12)} ${row.category.padEnd(18)} ${row.count}`);
-  add(`Hidden: ${r.hidden.discontinued} discontinued, ${r.hidden.notAuthorized} not authorized for purchase, ${r.hidden.refurbished} refurbished, ${r.hidden.noLongerListed} no longer listed.`);
+  add(`Hidden: ${r.hidden.discontinued} discontinued, ${r.hidden.notAuthorized} not authorized for purchase, ${r.hidden.refurbished} refurbished, ${r.hidden.noLongerListed} no longer listed, ${r.hidden.leftOutByRules} left out by the scope rules since they were added.`);
   add();
   add('What the products come with:');
   for (const f of r.completeness) add(`  ${f.field.padEnd(26)} ${String(f.have).padStart(6)} of ${f.of}  (${pct(f.have, f.of)})`);

@@ -41,9 +41,12 @@ async function main(): Promise<number> {
     case 'serve': {
       const scope = loadScope(config.scopeFile); // fail fast on a broken scope file
       await markAbandonedRuns(db);
-      const reread = await rereadStoredData(db, scope.warehouseCountries);
-      if (reread.warehouses || reread.specs) {
-        console.log(`Re-read stored data: ${reread.warehouses} warehouse stock rows re-sorted by country, ${reread.specs} products given specifications.`);
+      const reread = await rereadStoredData(db, scope);
+      if (reread.leftOut || reread.warehouses || reread.specs) {
+        console.log(
+          `Re-read stored data: ${reread.leftOut} products now left out by the scope rules, ` +
+          `${reread.warehouses} warehouse stock rows re-sorted by country, ${reread.specs} products given specifications.`,
+        );
       }
       const runner = new JobRunner(db, config.scopeFile);
       startScheduler(config.schedule, runner);

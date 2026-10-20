@@ -90,3 +90,18 @@ describe('scope: French-Canadian Lenovo versions', () => {
     expect(() => parseScope({ ...base, rules: [{ putIn: 'Laptops', mpn: 'CA$', ourCategory: ['Laptops'] }] })).toThrow(/only works with "exclude"/);
   });
 });
+
+describe('scope: special-bid and configure-to-order listings', () => {
+  const c = (description: string, mpn = 'ABC123', subCategory = 'Desktop Computers') =>
+    scope.classify({ category: 'Computer Systems', subCategory, description, manufacturer: 'Lenovo', mpn });
+  it('leaves them out', () => {
+    expect(c('BID5326456455 11-APR-2026 CTO THINKCENTRE M70Q GEN 5 INTEL CORE I')).toEqual({ inScope: false, reason: 'Special-bid configurations' });
+    expect(c('BID 5326456455 THINKCENTRE')).toEqual({ inScope: false, reason: 'Special-bid configurations' });
+    expect(c('THINKCENTRE M70Q CTO')).toEqual({ inScope: false, reason: 'Configure-to-order (CTO) models' });
+    expect(c('THINKPAD T14 G5', '21MLCTO1WW', 'Notebooks')).toEqual({ inScope: false, reason: 'Configure-to-order (CTO) models' });
+  });
+  it('keeps products that merely contain the letters', () => {
+    expect(c('THINKCENTRE M70Q GEN 5 I5-13400T 16GB 512GB W11P')).toEqual({ inScope: true, category: 'Desktops' });
+    expect(c('HP PROBOOK 450 G10 BIDIRECTIONAL', 'ABC', 'Notebooks')).toEqual({ inScope: true, category: 'Laptops' });
+  });
+});

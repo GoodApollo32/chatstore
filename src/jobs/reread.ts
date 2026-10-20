@@ -1,15 +1,32 @@
 import type { Db } from '../db/pool.js';
-import type { Country } from '../domain/types.js';
 import { warehouseCountry } from '../domain/warehouse.js';
 import { parseDetails, parseSpecs } from '../ingram/parse.js';
+import type { Scope } from '../scope.js';
 
 /**
  * Re-reads what's already stored, so a fix to how responses are read applies to existing products
  * without pulling everything from Ingram again (that's why raw responses are kept). Runs at start-up
  * and before each update; quick, and changes nothing that's already right.
  */
-export async function rereadStoredData(db: Db, warehouseCountries: Record<string, Country>): Promise<{ warehouses: number; specs: number }> {
+export async function rereadStoredData(db: Db, scope: Scope): Promise<{ leftOut: number; warehouses: number; specs: number }> {
+  // Products the scope rules now leave out drop out of search straight away (adding products needs a catalog pull).
+  let leftOut = 0;
+  const { rows: offers } = await db.query<{
+    id: number; manufacturer_raw: string; mpn_raw: string | null; title: string; distributor_category: string | null; distributor_subcategory: string | null;
+  }>(`SELECT id, manufacturer_raw, mpn_raw, title, distributor_category, distributor_subcategory FROM distributor_offer WHERE listed`);
+  for (const o of offers) {
+    const manufacturer = scope.manufacturerFor(o.manufacturer_raw);
+    if (!manufacturer) continue;
+    const c = scope.classify({
+      category: o.distributor_category, subCategory: o.distributor_subcategory, description: o.title, manufacturer, mpn: o.mpn_raw,
+    });
+    if (c.inScope) continue;
+    await db.query(`UPDATE distributor_offer SET listed = false, excluded_reason = $2, updated_at = now() WHERE id = $1`, [o.id, c.reason]);
+    leftOut++;
+  }
+
   // Which country each warehouse is in.
+  const warehouseCountries = scope.warehouseCountries;
   let warehouses = 0;
   const { rows: places } = await db.query<{ warehouse_id: string; location: string | null; country: string | null }>(
     `SELECT DISTINCT warehouse_id, location, country FROM offer_stock`,
@@ -43,5 +60,5 @@ export async function rereadStoredData(db: Db, warehouseCountries: Record<string
     );
     if (Object.keys(found).length) specs++;
   }
-  return { warehouses, specs };
+  return { leftOut, warehouses, specs };
 }
